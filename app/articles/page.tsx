@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase";
+import { CreateTopicButton } from "@/components/create-topic-button";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,9 @@ export default async function ArticlesPage() {
                 </span>
               ))}
             </div>
+
+            <CreateTopicButton articleId={article.id} />
+            
           </article>
         ))}
       </div>
