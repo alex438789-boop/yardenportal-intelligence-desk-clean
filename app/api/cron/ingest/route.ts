@@ -4,6 +4,8 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+const MAX_ARTICLES = 60;
+
 type FeedItem = {
   title: string;
   link: string;
@@ -118,6 +120,48 @@ function analyseArticleWithRules(
   };
 }
 
+async function pruneArticles(supabase: ReturnType<typeof createSupabaseServerClient>) {
+  const { data: oldArticles, error } = await supabase
+    .from("articles")
+    .select("id")
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .range(MAX_ARTICLES, 1000);
+
+  if (error) {
+    return {
+      deleted: 0,
+      error: error.message,
+    };
+  }
+
+  const idsToDelete = oldArticles?.map((article) => article.id) ?? [];
+
+  if (idsToDelete.length === 0) {
+    return {
+      deleted: 0,
+      error: null,
+    };
+  }
+
+  const { error: deleteError } = await supabase
+    .from("articles")
+    .delete()
+    .in("id", idsToDelete);
+
+  if (deleteError) {
+    return {
+      deleted: 0,
+      error: deleteError.message,
+    };
+  }
+
+  return {
+    deleted: idsToDelete.length,
+    error: null,
+  };
+}
+
 export async function GET() {
   const supabase = createSupabaseServerClient();
 
@@ -146,7 +190,8 @@ export async function GET() {
     );
   }
 
-  let inserted = 0;
+  let upserted = 0;
+  let skipped = 0;
   const errors: string[] = [];
 
   for (const source of sources ?? []) {
@@ -169,12 +214,17 @@ export async function GET() {
       for (const item of items) {
         const traditionalTitle = toTraditionalChinese(item.title) ?? item.title;
         const traditionalSummary = toTraditionalChinese(item.summary);
-        
+
         const analysis = analyseArticleWithRules(
-          item.title,
-          item.summary,
+          traditionalTitle,
+          traditionalSummary,
           scoringRules ?? []
         );
+
+        if (analysis.matched_rules.length === 0) {
+          skipped += 1;
+          continue;
+        }
 
         const { error } = await supabase.from("articles").upsert(
           {
@@ -194,9 +244,9 @@ export async function GET() {
         );
 
         if (error) {
-          errors.push(`${source.name} / ${item.title}: ${error.message}`);
+          errors.push(`${source.name} / ${traditionalTitle}: ${error.message}`);
         } else {
-          inserted += 1;
+          upserted += 1;
         }
       }
     } catch (error) {
@@ -208,9 +258,18 @@ export async function GET() {
     }
   }
 
+  const pruneResult = await pruneArticles(supabase);
+
+  if (pruneResult.error) {
+    errors.push(`Prune articles: ${pruneResult.error}`);
+  }
+
   return NextResponse.json({
     ok: true,
-    inserted,
+    upserted,
+    skipped,
+    deleted_old_articles: pruneResult.deleted,
+    max_articles: MAX_ARTICLES,
     errors,
   });
 }

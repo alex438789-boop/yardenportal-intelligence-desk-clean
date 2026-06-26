@@ -1,6 +1,7 @@
-import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase";
 import { CreateTopicButton } from "@/components/create-topic-button";
+import { RefreshArticlesButton } from "@/components/refresh-articles-button";
+import { DeleteArticleButton } from "@/components/delete-article-button";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,10 @@ type Article = {
   published_at: string | null;
   summary: string | null;
   region: string | null;
+  category: string | null;
+  score: number | string | null;
   topic_tags: string[] | null;
+  matched_rules: string[] | null;
   created_at: string;
 };
 
@@ -34,8 +38,9 @@ export default async function ArticlesPage() {
   const { data: articles, error } = await supabase
     .from("articles")
     .select("*")
-    .order("published_at", { ascending: false })
-    .limit(50);
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(60);
 
   if (error) {
     return (
@@ -50,7 +55,7 @@ export default async function ArticlesPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-sm font-medium text-slate-500">
             RSS Intelligence Feed
@@ -59,16 +64,11 @@ export default async function ArticlesPage() {
             最新抓取新聞
           </h1>
           <p className="mt-3 max-w-2xl text-slate-600">
-            這裡顯示從 RSS 來源抓進 Supabase 的新聞。下一步可以把值得分析的新聞轉成 YardenPORTAL topic。
+            這裡顯示通過 rules 篩選後的 RSS 新聞。按下重新搜尋後，系統會重新抓取 RSS、轉繁體、套用關鍵字規則、貼標籤，並保留最新 60 篇。
           </p>
         </div>
 
-        <Link
-          href="/api/cron/ingest"
-          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-        >
-          手動抓取 RSS
-        </Link>
+        <RefreshArticlesButton />
       </div>
 
       <div className="grid gap-4">
@@ -104,9 +104,21 @@ export default async function ArticlesPage() {
             )}
 
             <div className="mt-4 flex flex-wrap gap-2">
+              {article.score !== null && article.score !== undefined && (
+                <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                  Score {Number(article.score).toFixed(1)}
+                </span>
+              )}
+
               {article.region && (
                 <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs text-indigo-700">
                   {article.region}
+                </span>
+              )}
+
+              {article.category && (
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs text-emerald-700">
+                  {article.category}
                 </span>
               )}
 
@@ -120,15 +132,23 @@ export default async function ArticlesPage() {
               ))}
             </div>
 
-            <CreateTopicButton articleId={article.id} />
-            
+            {(article.matched_rules ?? []).length > 0 && (
+              <p className="mt-3 text-xs text-slate-500">
+                命中規則：{(article.matched_rules ?? []).join("、")}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <CreateTopicButton articleId={article.id} />
+              <DeleteArticleButton articleId={article.id} />
+            </div>
           </article>
         ))}
       </div>
 
       {articles?.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
-          目前還沒有 articles。請先打開 /api/cron/ingest 抓取 RSS。
+          目前還沒有 articles。請按上方「重新搜尋」抓取 RSS。
         </div>
       )}
     </main>
