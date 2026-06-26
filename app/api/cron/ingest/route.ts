@@ -10,6 +10,16 @@ type FeedItem = {
   published_at: string | null;
 };
 
+type ScoringRule = {
+  label: string;
+  keywords: string[];
+  score_delta: number | string;
+  region: string | null;
+  category: string | null;
+  tags: string[] | null;
+  is_active: boolean;
+};
+
 function stripCdata(value: string) {
   return value
     .replace(/^<!\[CDATA\[/, "")
@@ -57,6 +67,56 @@ function parseRss(xml: string): FeedItem[] {
     .filter((item) => item.title && item.link);
 }
 
+function includesAny(text: string, keywords: string[]) {
+  const normalizedText = text.toLowerCase();
+
+  return keywords.some((keyword) =>
+    normalizedText.includes(keyword.toLowerCase())
+  );
+}
+
+function analyseArticleWithRules(
+  title: string,
+  summary: string | null,
+  rules: ScoringRule[]
+) {
+  const text = `${title} ${summary ?? ""}`;
+
+  let score = 5.5;
+  let region = "全球";
+  let category = "國際政治";
+
+  const topicTags = new Set<string>();
+  const matchedRules = new Set<string>();
+
+  for (const rule of rules) {
+    if (!rule.is_active) continue;
+
+    const keywords = rule.keywords ?? [];
+
+    if (includesAny(text, keywords)) {
+      score += Number(rule.score_delta);
+
+      if (rule.region) region = rule.region;
+      if (rule.category) category = rule.category;
+
+      for (const tag of rule.tags ?? []) {
+        topicTags.add(tag);
+      }
+
+      matchedRules.add(rule.label);
+    }
+  }
+
+  return {
+    score: Math.min(10, Math.round(score * 10) / 10),
+    region,
+    category,
+    topic_tags: Array.from(topicTags),
+    matched_rules: Array.from(matchedRules),
+  };
+}
+
 export async function GET() {
   const supabase = createSupabaseServerClient();
 
@@ -69,6 +129,18 @@ export async function GET() {
   if (sourcesError) {
     return NextResponse.json(
       { ok: false, error: sourcesError.message },
+      { status: 500 }
+    );
+  }
+
+  const { data: scoringRules, error: rulesError } = await supabase
+    .from("scoring_rules")
+    .select("label,keywords,score_delta,region,category,tags,is_active")
+    .eq("is_active", true);
+
+  if (rulesError) {
+    return NextResponse.json(
+      { ok: false, error: rulesError.message },
       { status: 500 }
     );
   }
@@ -94,6 +166,12 @@ export async function GET() {
       const items = parseRss(xml);
 
       for (const item of items) {
+        const analysis = analyseArticleWithRules(
+          item.title,
+          item.summary,
+          scoringRules ?? []
+        );
+
         const { error } = await supabase.from("articles").upsert(
           {
             title: item.title,
@@ -102,8 +180,11 @@ export async function GET() {
             published_at: item.published_at,
             summary: item.summary,
             full_text: null,
-            region: null,
-            topic_tags: [],
+            score: analysis.score,
+            region: analysis.region,
+            category: analysis.category,
+            topic_tags: analysis.topic_tags,
+            matched_rules: analysis.matched_rules,
           },
           { onConflict: "url" }
         );
