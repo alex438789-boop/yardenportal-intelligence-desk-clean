@@ -1,51 +1,41 @@
-"use client";
+import { NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Trash2 } from "lucide-react";
+export const dynamic = "force-dynamic";
 
-export function DeleteArticleButton({ articleId }: { articleId: string }) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
+export async function POST(request: Request) {
+  try {
+    const { topicId } = await request.json();
 
-  async function deleteArticle() {
-    const confirmed = window.confirm("確定要刪除這篇新聞嗎？");
-    if (!confirmed) return;
-
-    setLoading(true);
-
-    try {
-      const response = await fetch("/api/articles/delete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ articleId }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
-        alert(data.error ?? "刪除失敗");
-        return;
-      }
-
-      router.refresh();
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "刪除失敗");
-    } finally {
-      setLoading(false);
+    if (!topicId) {
+      return NextResponse.json(
+        { ok: false, error: "Missing topicId" },
+        { status: 400 }
+      );
     }
-  }
 
-  return (
-    <button
-      onClick={deleteArticle}
-      disabled={loading}
-      className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-    >
-      <Trash2 className="h-4 w-4" />
-      {loading ? "刪除中..." : "刪除"}
-    </button>
-  );
+    const supabase = createSupabaseServerClient();
+
+    const { error } = await supabase
+      .from("topics")
+      .delete()
+      .eq("id", topicId);
+
+    if (error) {
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
 }
