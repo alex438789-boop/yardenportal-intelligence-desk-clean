@@ -106,7 +106,7 @@ export async function getDrafts(): Promise<Draft[]> {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return data ? data.map(mapTopic) : [];
+    return data ? data.map(mapDraft) : [];
   } catch (error) {
     console.error("Failed to load drafts from Supabase:", error);
     return [];
