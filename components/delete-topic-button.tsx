@@ -4,23 +4,26 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 
-export function DeleteArticleButton({ articleId }: { articleId: string }) {
+export function DeleteTopicButton({ topicId }: { topicId: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  async function deleteArticle() {
-    const confirmed = window.confirm("確定要刪除這篇新聞嗎？");
+  async function deleteTopic() {
+    const confirmed = window.confirm(
+      "確定要刪除這個 topic 嗎？相關 drafts 不會一起刪除。"
+    );
+
     if (!confirmed) return;
 
     setLoading(true);
 
     try {
-      const response = await fetch("/api/articles/delete", {
+      const response = await fetch("/api/topics/delete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ articleId }),
+        body: JSON.stringify({ topicId }),
       });
 
       const data = await response.json();
@@ -40,7 +43,7 @@ export function DeleteArticleButton({ articleId }: { articleId: string }) {
 
   return (
     <button
-      onClick={deleteArticle}
+      onClick={deleteTopic}
       disabled={loading}
       className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
     >
