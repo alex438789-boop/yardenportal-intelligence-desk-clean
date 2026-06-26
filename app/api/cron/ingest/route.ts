@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toTraditionalChinese } from "@/lib/text";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -166,6 +167,9 @@ export async function GET() {
       const items = parseRss(xml);
 
       for (const item of items) {
+        const traditionalTitle = toTraditionalChinese(item.title) ?? item.title;
+        const traditionalSummary = toTraditionalChinese(item.summary);
+        
         const analysis = analyseArticleWithRules(
           item.title,
           item.summary,
@@ -174,11 +178,11 @@ export async function GET() {
 
         const { error } = await supabase.from("articles").upsert(
           {
-            title: item.title,
+            title: traditionalTitle,
             source: source.name,
             url: item.link,
             published_at: item.published_at,
-            summary: item.summary,
+            summary: traditionalSummary,
             full_text: null,
             score: analysis.score,
             region: analysis.region,
