@@ -3,54 +3,63 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-function inferRegionAndCategory(title: string, summary: string | null) {
+type ScoringRule = {
+  label: string;
+  keywords: string[];
+  score_delta: number | string;
+  region: string | null;
+  category: string | null;
+  tags: string[] | null;
+  is_active: boolean;
+};
+
+function includesAny(text: string, keywords: string[]) {
+  const normalizedText = text.toLowerCase();
+
+  return keywords.some((keyword) =>
+    normalizedText.includes(keyword.toLowerCase())
+  );
+}
+
+function analyseArticleWithRules(
+  title: string,
+  summary: string | null,
+  rules: ScoringRule[]
+) {
   const text = `${title} ${summary ?? ""}`;
 
-  if (text.includes("台灣") || text.includes("中國") || text.includes("台海")) {
-    return { region: "台灣／中國", category: "台海安全" };
+  let score = 5.5;
+  let region = "全球";
+  let category = "國際政治";
+  const tags = new Set<string>();
+
+  for (const rule of rules) {
+    if (!rule.is_active) continue;
+
+    if (includesAny(text, rule.keywords ?? [])) {
+      score += Number(rule.score_delta);
+
+      if (rule.region) region = rule.region;
+      if (rule.category) category = rule.category;
+
+      for (const tag of rule.tags ?? []) {
+        tags.add(tag);
+      }
+    }
   }
 
-  if (
-    text.includes("美國") ||
-    text.includes("中國") ||
-    text.includes("晶片") ||
-    text.includes("稀土")
-  ) {
-    return { region: "美中", category: "科技供應鏈" };
-  }
-
-  if (
-    text.includes("NATO") ||
-    text.includes("北約") ||
-    text.includes("烏克蘭") ||
-    text.includes("俄羅斯")
-  ) {
-    return { region: "歐洲／跨大西洋", category: "安全" };
-  }
-
-  if (
-    text.includes("伊朗") ||
-    text.includes("以色列") ||
-    text.includes("加薩") ||
-    text.includes("中東")
-  ) {
-    return { region: "中東", category: "軍事安全" };
-  }
-
-  if (
-    text.includes("泰國") ||
-    text.includes("柬埔寨") ||
-    text.includes("東協") ||
-    text.includes("ASEAN")
-  ) {
-    return { region: "東南亞", category: "區域安全" };
-  }
-
-  return { region: "全球", category: "國際政治" };
+  return {
+    score: Math.min(10, Math.round(score * 10) / 10),
+    region,
+    category,
+    tags: Array.from(tags),
+  };
 }
 
 function makeRationale(title: string, summary: string | null) {
-  return `此議題來自 RSS 新聞池，涉及「${title}」。初步摘要為：${summary ?? "尚無摘要"}。可進一步判斷其是否涉及地緣政治、安全、供應鏈、國內政治或大國競爭。`;
+  return `此議題來自 RSS 新聞池，涉及「${title}」。初步摘要為：${
+    summary ?? "尚無摘要"
+  }。可進一步判斷其是否涉及地緣政治、安全、供應鏈、國內政治或大國競爭。`;
 }
 
 export async function POST(request: Request) {
@@ -82,16 +91,34 @@ export async function POST(request: Request) {
       );
     }
 
-    const inferred = inferRegionAndCategory(article.title, article.summary);
+    const { data: scoringRules, error: rulesError } = await supabase
+      .from("scoring_rules")
+      .select("label,keywords,score_delta,region,category,tags,is_active")
+      .eq("is_active", true);
+
+    if (rulesError) {
+      return NextResponse.json(
+        { ok: false, error: rulesError.message },
+        { status: 500 }
+      );
+    }
+
+    const analysis = analyseArticleWithRules(
+      article.title,
+      article.summary,
+      scoringRules ?? []
+    );
 
     const topicPayload = {
       title: article.title,
-      score: 7.5,
-      region: inferred.region,
-      category: inferred.category,
+      score: analysis.score,
+      region: analysis.region,
+      category: analysis.category,
       rationale: makeRationale(article.title, article.summary),
       status: "new",
-      tags: article.topic_tags ?? [],
+      tags: Array.from(
+        new Set([...(article.topic_tags ?? []), ...analysis.tags])
+      ),
       articles: [
         {
           id: article.id,

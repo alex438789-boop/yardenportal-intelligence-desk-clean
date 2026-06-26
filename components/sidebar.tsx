@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { Newspaper, Radar, FileText, Waves, Rss, Settings } from "lucide-react";
+import { Newspaper, Radar, FileText, Waves, SlidersHorizontal, Rss, Settings } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Radar 今日雷達", icon: Radar },
   { href: "/topics", label: "Topics 議題庫", icon: Newspaper },
   { href: "/drafts", label: "Drafts 草稿", icon: FileText },
   { href: "/articles", label: "Articles 新聞池", icon: Waves },
+  { href: "/scoring-rules", label: "Rules 規則", icon: SlidersHorizontal,},
   { href: "/sources", label: "Sources 來源", icon: Rss },
   { href: "/settings", label: "Settings 設定", icon: Settings },
 ];
