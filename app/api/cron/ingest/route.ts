@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase";
+import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +58,7 @@ function parseRss(xml: string): FeedItem[] {
 }
 
 export async function GET() {
-  const supabase = createServerSupabaseClient();
+  const supabase = createSupabaseServerClient();
 
   const { data: sources, error: sourcesError } = await supabase
     .from("sources")
