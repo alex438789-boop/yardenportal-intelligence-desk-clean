@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Newspaper, Radar, FileText, Rss, Settings } from "lucide-react";
+import { Newspaper, Radar, FileText, Waves, Rss, Settings } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Radar 今日雷達", icon: Radar },
