@@ -106,10 +106,10 @@ export async function getDrafts(): Promise<Draft[]> {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return data && data.length > 0 ? data.map(mapDraft) : mockDrafts;
+    return data ? data.map(mapTopic) : [];
   } catch (error) {
     console.error("Failed to load drafts from Supabase:", error);
-    return mockDrafts;
+    return [];
   }
 }
 
