@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RebuildClustersButton } from "@/components/rebuild-clusters-button";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -78,12 +79,16 @@ export default async function ClustersPage() {
           </p>
         </div>
 
-        <Link
-          href="/api/clusters/rebuild"
-          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-        >
-          重新整理 Clusters
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <RebuildClustersButton />
+
+          <Link
+            href="/articles"
+            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            回 Articles
+          </Link>
+        </div>
       </div>
 
       {(clusters ?? []).length === 0 && (
