@@ -32,7 +32,7 @@ type ClusterDraft = {
   articles: Article[];
 };
 
-const MAX_ARTICLES = 60;
+const MAX_ARTICLES = 100;
 const TIME_WINDOW_HOURS = 72;
 const FINGERPRINT_OVERLAP_THRESHOLD = 3;
 

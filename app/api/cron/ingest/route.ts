@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-const MAX_ARTICLES = 60;
+const MAX_ARTICLES = 150;
 
 type FeedItem = {
   title: string;

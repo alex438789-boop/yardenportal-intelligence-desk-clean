@@ -40,7 +40,7 @@ export default async function ArticlesPage() {
     .select("*")
     .order("published_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
-    .limit(60);
+    .limit(150);
 
   if (error) {
     return (
