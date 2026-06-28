@@ -15,6 +15,8 @@ type Article = {
   category: string | null;
   topic_tags: string[] | null;
   matched_rules: string[] | null;
+  event_fingerprint: string | null;
+  event_keywords: string[] | null;
 };
 
 type ClusterDraft = {
@@ -25,50 +27,33 @@ type ClusterDraft = {
   category: string | null;
   tags: string[];
   matched_rules: string[];
+  event_keywords: string[];
+  event_fingerprint: string | null;
   articles: Article[];
 };
 
-const STOP_WORDS = new Set([
-  "的",
-  "了",
-  "和",
-  "與",
-  "及",
-  "在",
-  "對",
-  "為",
-  "是",
-  "有",
-  "將",
-  "中",
-  "就",
-  "被",
-  "後",
-  "前",
-  "說",
-  "稱",
-  "表示",
-  "指出",
-  "新聞",
-  "報導",
-  "最新",
-  "the",
-  "and",
-  "for",
-  "with",
-  "from",
-  "that",
-  "this",
-  "are",
-  "was",
-  "were",
-  "has",
-  "have",
-  "will",
-  "said",
-  "says",
-  "new",
-  "news",
+const MAX_ARTICLES = 60;
+const TIME_WINDOW_HOURS = 72;
+const FINGERPRINT_OVERLAP_THRESHOLD = 3;
+
+const BROAD_CLUSTER_TERMS = new Set([
+  "美中競爭",
+  "供應鏈",
+  "軍事安全",
+  "中東",
+  "台灣政治",
+  "國內政治",
+  "歐洲安全",
+  "北約",
+  "台海",
+  "灰色地帶",
+  "東南亞",
+  "區域安全",
+  "科技供應鏈",
+  "國際政治",
+  "安全",
+  "台美關係",
+  "國會外交",
 ]);
 
 function toNumber(value: number | string | null | undefined) {
@@ -83,23 +68,25 @@ function unique(values: (string | null | undefined)[]) {
   );
 }
 
-function tokenize(text: string) {
-  const normalized = text
+function normalize(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function fallbackEventKeywords(article: Article) {
+  const text = `${article.title} ${article.summary ?? ""}`
     .replace(/[，。！？、；：「」『』（）()【】\[\],.!?:;"'“”]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  const latinWords = normalized.match(/[A-Za-z][A-Za-z-]{2,}/g) ?? [];
-  const chineseChunks = normalized.match(/[\u4e00-\u9fff]{2,}/g) ?? [];
+  const latinWords = text.match(/[A-Za-z][A-Za-z-]{2,}/g) ?? [];
+  const chineseChunks = text.match(/[\u4e00-\u9fff]{3,}/g) ?? [];
 
   const chineseTokens = chineseChunks.flatMap((chunk) => {
     const tokens: string[] = [];
 
-    if (chunk.length <= 6) {
-      tokens.push(chunk);
-    }
+    if (chunk.length <= 10) tokens.push(chunk);
 
-    for (let size = 2; size <= 4; size += 1) {
+    for (let size = 3; size <= 5; size += 1) {
       for (let i = 0; i <= chunk.length - size; i += 1) {
         tokens.push(chunk.slice(i, i + size));
       }
@@ -109,59 +96,29 @@ function tokenize(text: string) {
   });
 
   return unique([...latinWords, ...chineseTokens])
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 2)
-    .filter((token) => !STOP_WORDS.has(token.toLowerCase()))
-    .slice(0, 80);
+    .filter((token) => token.length >= 3)
+    .filter((token) => !BROAD_CLUSTER_TERMS.has(token))
+    .slice(0, 20);
 }
 
-function getArticleKeywords(article: Article) {
-  const text = `${article.title} ${article.summary ?? ""}`;
-  const tokens = tokenize(text);
+function getEventKeywords(article: Article) {
+  const keywords =
+    article.event_keywords && article.event_keywords.length > 0
+      ? article.event_keywords
+      : fallbackEventKeywords(article);
 
-  const tags = article.topic_tags ?? [];
-  const rules = article.matched_rules ?? [];
-
-  return unique([...tokens, ...tags, ...rules]);
+  return keywords.filter((keyword) => !BROAD_CLUSTER_TERMS.has(keyword));
 }
 
 function overlapCount(a: string[], b: string[]) {
-  const setB = new Set(b.map((item) => item.toLowerCase()));
-  return a.filter((item) => setB.has(item.toLowerCase())).length;
+  const setB = new Set(b.map((item) => normalize(item)));
+  return a.filter((item) => setB.has(normalize(item))).length;
 }
 
-function articleSimilarity(article: Article, cluster: ClusterDraft) {
-  const articleKeywords = getArticleKeywords(article);
-  const clusterKeywords = unique(
-    cluster.articles.flatMap((item) => getArticleKeywords(item))
+function getClusterEventKeywords(cluster: ClusterDraft) {
+  return unique(
+    cluster.articles.flatMap((article) => getEventKeywords(article))
   );
-
-  const keywordOverlap = overlapCount(articleKeywords, clusterKeywords);
-  const tagOverlap = overlapCount(article.topic_tags ?? [], cluster.tags);
-  const ruleOverlap = overlapCount(
-    article.matched_rules ?? [],
-    cluster.matched_rules
-  );
-
-  let score = 0;
-
-  if (article.region && cluster.region && article.region === cluster.region) {
-    score += 1;
-  }
-
-  if (
-    article.category &&
-    cluster.category &&
-    article.category === cluster.category
-  ) {
-    score += 1;
-  }
-
-  score += Math.min(keywordOverlap, 5);
-  score += tagOverlap * 2;
-  score += ruleOverlap * 2;
-
-  return score;
 }
 
 function isWithinTimeWindow(article: Article, cluster: ClusterDraft) {
@@ -180,15 +137,32 @@ function isWithinTimeWindow(article: Article, cluster: ClusterDraft) {
   const latestClusterTime = Math.max(...clusterTimes);
   const diffHours = Math.abs(articleTime - latestClusterTime) / 1000 / 60 / 60;
 
-  return diffHours <= 72;
+  return diffHours <= TIME_WINDOW_HOURS;
+}
+
+function fingerprintSimilarity(article: Article, cluster: ClusterDraft) {
+  const articleKeywords = getEventKeywords(article);
+  const clusterKeywords = getClusterEventKeywords(cluster);
+
+  return overlapCount(articleKeywords, clusterKeywords);
 }
 
 function shouldJoinCluster(article: Article, cluster: ClusterDraft) {
   if (!isWithinTimeWindow(article, cluster)) return false;
 
-  const similarity = articleSimilarity(article, cluster);
+  const overlap = fingerprintSimilarity(article, cluster);
 
-  return similarity >= 5;
+  if (overlap >= FINGERPRINT_OVERLAP_THRESHOLD) return true;
+
+  if (
+    article.event_fingerprint &&
+    cluster.event_fingerprint &&
+    article.event_fingerprint === cluster.event_fingerprint
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function makeClusterTitle(articles: Article[]) {
@@ -216,16 +190,28 @@ function updateCluster(cluster: ClusterDraft) {
   cluster.score = Math.max(...scores);
   cluster.title = makeClusterTitle(cluster.articles);
   cluster.summary = makeClusterSummary(cluster.articles);
-  cluster.tags = unique(cluster.articles.flatMap((article) => article.topic_tags ?? []));
+
+  cluster.tags = unique(
+    cluster.articles.flatMap((article) => article.topic_tags ?? [])
+  );
+
   cluster.matched_rules = unique(
     cluster.articles.flatMap((article) => article.matched_rules ?? [])
   );
 
+  cluster.event_keywords = unique(
+    cluster.articles.flatMap((article) => getEventKeywords(article))
+  );
+
   const regions = unique(cluster.articles.map((article) => article.region));
   const categories = unique(cluster.articles.map((article) => article.category));
+  const fingerprints = unique(
+    cluster.articles.map((article) => article.event_fingerprint)
+  );
 
   cluster.region = regions[0] ?? null;
   cluster.category = categories[0] ?? null;
+  cluster.event_fingerprint = fingerprints[0] ?? null;
 }
 
 function createInitialCluster(article: Article): ClusterDraft {
@@ -237,6 +223,8 @@ function createInitialCluster(article: Article): ClusterDraft {
     category: article.category,
     tags: article.topic_tags ?? [],
     matched_rules: article.matched_rules ?? [],
+    event_keywords: getEventKeywords(article),
+    event_fingerprint: article.event_fingerprint,
     articles: [article],
   };
 
@@ -250,14 +238,14 @@ function buildClusters(articles: Article[]) {
 
   for (const article of articles) {
     let bestCluster: ClusterDraft | null = null;
-    let bestScore = 0;
+    let bestOverlap = 0;
 
     for (const cluster of clusters) {
-      const similarity = articleSimilarity(article, cluster);
+      const overlap = fingerprintSimilarity(article, cluster);
 
-      if (shouldJoinCluster(article, cluster) && similarity > bestScore) {
+      if (shouldJoinCluster(article, cluster) && overlap > bestOverlap) {
         bestCluster = cluster;
-        bestScore = similarity;
+        bestOverlap = overlap;
       }
     }
 
@@ -278,11 +266,11 @@ export async function GET() {
   const { data: articles, error: articlesError } = await supabase
     .from("articles")
     .select(
-      "id,title,source,url,published_at,summary,score,region,category,topic_tags,matched_rules"
+      "id,title,source,url,published_at,summary,score,region,category,topic_tags,matched_rules,event_fingerprint,event_keywords"
     )
     .order("published_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
-    .limit(60);
+    .limit(MAX_ARTICLES);
 
   if (articlesError) {
     return NextResponse.json(
@@ -385,5 +373,7 @@ export async function GET() {
     articles: typedArticles.length,
     clusters: insertedClusters,
     relations: insertedRelations,
+    fingerprint_overlap_threshold: FINGERPRINT_OVERLAP_THRESHOLD,
+    time_window_hours: TIME_WINDOW_HOURS,
   });
 }
