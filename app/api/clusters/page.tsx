@@ -121,7 +121,7 @@ export default async function ClustersPage() {
       )}
 
       <div className="grid gap-5">
-        {((clusters ?? []) as Cluster[]).map((cluster) => (
+        {(clusters ?? []).map((cluster: any) => (
           <article
             key={cluster.id}
             className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
@@ -194,7 +194,7 @@ export default async function ClustersPage() {
               </h3>
 
               <div className="mt-3 space-y-3">
-                {(cluster.cluster_articles ?? []).map((relation) => {
+                {(cluster.cluster_articles ?? []).map((relation: any) => {
                   const article = relation.articles;
                   if (!article) return null;
 
