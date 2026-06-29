@@ -867,6 +867,35 @@ function makeClusterTitle(articles: Article[]) {
 function makeClusterSummary(articles: Article[]) {
   const sources = unique(articles.map((article) => article.source));
   const topArticles = articles.slice(0, 3);
+  const highestScoreArticle = [...articles].sort(
+    (a, b) => toNumber(b.score) - toNumber(a.score)
+  )[0];
+
+  if (articles.length > 3) {
+    const signals = unique(
+      articles.flatMap((article) => {
+        const signal = getEventSignal(article);
+        return [
+          ...signal.entities.slice(0, 4),
+          ...signal.actions.slice(0, 3),
+          ...signal.topics.slice(0, 3),
+        ];
+      })
+    ).slice(0, 8);
+
+    const coreSignalText =
+      signals.length > 0 ? `核心訊號包括 ${signals.join("、")}。` : "";
+
+    const articleExamples = topArticles
+      .map((article) => `「${article.title}」`)
+      .join("、");
+
+    return `這個事件群組目前包含 ${articles.length} 篇新聞，來自 ${sources.length} 個來源，包括 ${sources.join(
+      "、"
+    )}。簡述：這組新聞大致圍繞「${
+      highestScoreArticle?.title ?? articles[0]?.title ?? "未命名事件"
+    }」所代表的事件或議題發展，反映多個來源正在追蹤同一條新聞線索。${coreSignalText}代表性新聞包括：${articleExamples}。`;
+  }
 
   return `此事件群組由 ${articles.length} 篇新聞組成，來源包括 ${sources.join(
     "、"
