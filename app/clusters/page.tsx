@@ -74,6 +74,22 @@ function hoursSince(date: string | null) {
   return Math.max(0, (Date.now() - time) / 1000 / 60 / 60);
 }
 
+function getRelatedArticles(cluster: Cluster) {
+  return (cluster.cluster_articles ?? [])
+    .flatMap((relation) => {
+      if (!relation.articles) return [];
+      return Array.isArray(relation.articles)
+        ? relation.articles
+        : [relation.articles];
+    })
+    .filter(Boolean);
+}
+
+function isRealCluster(cluster: Cluster) {
+  const articleCount = cluster.article_count ?? getRelatedArticles(cluster).length;
+  return articleCount >= 2;
+}
+
 function getRecencyBonus(cluster: Cluster) {
   const hours = hoursSince(cluster.latest_published_at);
 
@@ -145,7 +161,7 @@ function getRiskBonus(cluster: Cluster) {
 
 function calculatePriority(cluster: Cluster): EnrichedCluster {
   const baseScore = toNumber(cluster.score);
-  const articleCount = cluster.article_count ?? 1;
+  const articleCount = cluster.article_count ?? getRelatedArticles(cluster).length;
   const sourceCount = cluster.source_count ?? 1;
 
   const articleBonus = Math.min(articleCount * 0.5, 2.5);
@@ -155,12 +171,19 @@ function calculatePriority(cluster: Cluster): EnrichedCluster {
   const riskBonus = getRiskBonus(cluster);
 
   const priorityScore =
-    baseScore + articleBonus + sourceBonus + recencyBonus + categoryBonus + riskBonus;
+    baseScore +
+    articleBonus +
+    sourceBonus +
+    recencyBonus +
+    categoryBonus +
+    riskBonus;
 
   const reasons: string[] = [];
 
   if (sourceCount >= 2) reasons.push(`${sourceCount} 個來源追蹤`);
   if (articleCount >= 3) reasons.push(`${articleCount} 篇文章形成事件線`);
+  if (articleCount === 2) reasons.push("2 篇文章形成初步事件線");
+
   if (recencyBonus >= 1.5) reasons.push("24 小時內最新發展");
   else if (recencyBonus >= 1.0) reasons.push("48 小時內更新");
 
@@ -177,7 +200,7 @@ function calculatePriority(cluster: Cluster): EnrichedCluster {
   return {
     ...cluster,
     priority_score: Math.round(priorityScore * 10) / 10,
-    priority_reason: reasons.length > 0 ? reasons : ["一般事件追蹤"],
+    priority_reason: reasons.length > 0 ? reasons : ["初步事件追蹤"],
     importance_level: importanceLevel,
   };
 }
@@ -212,17 +235,6 @@ function isTaiwanRelated(cluster: Cluster) {
   ];
 
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
-}
-
-function getRelatedArticles(cluster: Cluster) {
-  return (cluster.cluster_articles ?? [])
-    .flatMap((relation) => {
-      if (!relation.articles) return [];
-      return Array.isArray(relation.articles)
-        ? relation.articles
-        : [relation.articles];
-    })
-    .filter(Boolean);
 }
 
 function ClusterCard({
@@ -333,34 +345,22 @@ function ClusterCard({
 }
 
 function Section({
-
   id,
-
   title,
-
   description,
-
   clusters,
-
   compact = false,
-
 }: {
-
   id?: string;
-
   title: string;
-
   description: string;
-
   clusters: EnrichedCluster[];
-
   compact?: boolean;
-
 }) {
   if (clusters.length === 0) return null;
 
   return (
-    <section id={id} className="scroll-mt-10 mb-10">
+    <section id={id} className="mb-10 scroll-mt-10">
       <div className="mb-4">
         <h2 className="text-2xl font-bold tracking-tight text-slate-950">
           {title}
@@ -414,9 +414,15 @@ export default async function ClustersPage() {
     );
   }
 
-  const enrichedClusters = ((clusters ?? []) as Cluster[])
+  const rawClusters = (clusters ?? []) as Cluster[];
+
+  const realClusters = rawClusters.filter(isRealCluster);
+
+  const enrichedClusters = realClusters
     .map(calculatePriority)
     .sort((a, b) => b.priority_score - a.priority_score);
+
+  const ignoredSingleArticleCount = rawClusters.length - realClusters.length;
 
   const topPriority = enrichedClusters.slice(0, 6);
 
@@ -458,7 +464,7 @@ export default async function ClustersPage() {
           </h1>
 
           <p className="mt-3 max-w-3xl text-slate-600">
-            這裡將通過篩選的 articles 聚合成事件群組。排序依據事件優先級、來源數、新鮮度、風險訊號與政策／產業相關性；台灣相關事件會放入 Taiwan Watch 作為追蹤群組，但不會自動獲得額外排序加權。
+            這裡只顯示由 2 篇以上 articles 組成的事件群組。單篇文章不會被視為 cluster。排序依據事件優先級、來源數、新鮮度、風險訊號與政策／產業相關性；台灣相關事件會放入 Taiwan Watch 作為追蹤群組，但不會自動獲得額外排序加權。
           </p>
         </div>
 
@@ -474,11 +480,18 @@ export default async function ClustersPage() {
         </div>
       </div>
 
-      <section className="mb-10 grid gap-4 md:grid-cols-4">
+      <section className="mb-10 grid gap-4 md:grid-cols-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-medium text-slate-500">Total Clusters</p>
+          <p className="text-xs font-medium text-slate-500">Real Clusters</p>
           <p className="mt-2 text-3xl font-bold text-slate-950">
             {enrichedClusters.length}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-medium text-slate-500">Single Articles Hidden</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">
+            {ignoredSingleArticleCount}
           </p>
         </div>
 
@@ -499,15 +512,13 @@ export default async function ClustersPage() {
         <a
           href="#taiwan-watch"
           className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
-
->
+        >
           <p className="text-xs font-medium text-slate-500">Taiwan Watch</p>
           <p className="mt-2 text-3xl font-bold text-slate-950">
             {taiwanCount}
           </p>
           <p className="mt-2 text-xs text-slate-400">點擊跳到追蹤區塊</p>
-</a>
-        </div>
+        </a>
       </section>
 
       <Section
@@ -540,7 +551,7 @@ export default async function ClustersPage() {
 
       {enrichedClusters.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
-          目前還沒有 clusters。請先到 Articles 重新搜尋並重建 Clusters。
+          目前還沒有 2 篇以上文章組成的 clusters。單篇文章會留在 Articles，不會顯示在事件群組。
         </div>
       )}
     </main>
