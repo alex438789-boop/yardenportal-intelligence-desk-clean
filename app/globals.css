@@ -5,3 +5,8 @@
 :root { color-scheme: light; }
 body { @apply bg-slate-50 text-slate-950; }
 a { @apply transition-colors; }
+html {
+
+  scroll-behavior: smooth;
+
+}

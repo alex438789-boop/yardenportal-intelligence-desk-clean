@@ -333,20 +333,34 @@ function ClusterCard({
 }
 
 function Section({
+
+  id,
+
   title,
+
   description,
+
   clusters,
+
   compact = false,
+
 }: {
+
+  id?: string;
+
   title: string;
+
   description: string;
+
   clusters: EnrichedCluster[];
+
   compact?: boolean;
+
 }) {
   if (clusters.length === 0) return null;
 
   return (
-    <section className="mb-10">
+    <section id={id} className="scroll-mt-10 mb-10">
       <div className="mb-4">
         <h2 className="text-2xl font-bold tracking-tight text-slate-950">
           {title}
@@ -482,11 +496,17 @@ export default async function ClustersPage() {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <a
+          href="#taiwan-watch"
+          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+
+>
           <p className="text-xs font-medium text-slate-500">Taiwan Watch</p>
           <p className="mt-2 text-3xl font-bold text-slate-950">
             {taiwanCount}
           </p>
+          <p className="mt-2 text-xs text-slate-400">點擊跳到追蹤區塊</p>
+</a>
         </div>
       </section>
 
@@ -511,6 +531,7 @@ export default async function ClustersPage() {
       />
 
       <Section
+        id="taiwan-watch"
         title="🇹🇼 Taiwan Watch 台灣追蹤"
         description="與台灣、台海、金門、馬祖、台積電或台灣政府機構相關的事件；這是追蹤區塊，不影響 Top Priority 排序。"
         clusters={taiwanWatch}
