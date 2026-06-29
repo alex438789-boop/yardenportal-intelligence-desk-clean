@@ -43,6 +43,20 @@ type ClusterDraft = {
   articles: Article[];
 };
 
+type EventType =
+  | "military_conflict"
+  | "export_control"
+  | "tech_investment"
+  | "nuclear_diplomacy"
+  | "election"
+  | "government_formation"
+  | "polling"
+  | "trade_policy"
+  | "diplomacy"
+  | "energy"
+  | "climate_policy"
+  | "unknown";
+
 /* ============================================================================
  * 2. Core settings
  * ========================================================================== */
@@ -165,12 +179,90 @@ const WEAK_ENTITIES = new Set([
   "華府",
 ]);
 
+const SOURCE_ARTIFACT_TERMS = new Set([
+  "google",
+  "news",
+  "reuters",
+  "feed",
+  "rss",
+  "middle",
+  "east",
+  "world",
+  "technology",
+  "security",
+  "politics",
+  "latest",
+]);
+
+const SPECIFIC_ANCHOR_ACTIONS = new Set([
+  "出口管制",
+  "科技管制",
+  "制裁",
+  "關稅",
+  "禁令",
+  "限制",
+  "查扣",
+  "海關查扣",
+  "攻擊",
+  "空襲",
+  "轟炸",
+  "停火",
+  "封鎖",
+  "軍演",
+  "巡邏",
+  "部署",
+  "發射",
+  "投資",
+  "建設",
+  "擴張",
+  "設廠",
+  "擴廠",
+  "選舉",
+  "表決",
+  "罷免",
+  "不信任投票",
+]);
+
+const SPECIFIC_POLICY_TOPICS = new Set([
+  "半導體",
+  "晶片",
+  "先進晶片",
+  "AI晶片",
+  "人工智慧",
+  "生成式AI",
+  "資料中心",
+  "GPU",
+  "高頻寬記憶體",
+  "出口管制",
+  "科技管制",
+  "產業政策",
+  "國防預算",
+  "軍費",
+  "飛彈",
+  "無人機",
+  "網路安全",
+  "制裁",
+  "關稅",
+  "能源",
+  "石油",
+  "天然氣",
+  "核電",
+]);
+
 function isWeakEntity(value: string) {
   return WEAK_ENTITIES.has(value);
 }
 
 function getStrongItems(values: string[]) {
   return values.filter((value) => !isWeakEntity(value));
+}
+
+function getSpecificTopicItems(values: string[]) {
+  return values.filter((value) => SPECIFIC_POLICY_TOPICS.has(value));
+}
+
+function getSpecificActionItems(values: string[]) {
+  return values.filter((value) => SPECIFIC_ANCHOR_ACTIONS.has(value));
 }
 
 /* ============================================================================
@@ -812,7 +904,183 @@ const POLICY_TOPICS = [
 ];
 
 /* ============================================================================
- * 6. Utility functions
+ * 6. Event type rules
+ * ========================================================================== */
+
+const EVENT_TYPE_RULES: { type: EventType; terms: string[] }[] = [
+  {
+    type: "military_conflict",
+    terms: [
+      "攻擊",
+      "空襲",
+      "轟炸",
+      "飛彈",
+      "軍演",
+      "巡邏",
+      "部署",
+      "封鎖",
+      "停火",
+      "戰爭",
+      "衝突",
+      "attack",
+      "strike",
+      "airstrike",
+      "missile",
+      "ceasefire",
+      "war",
+    ],
+  },
+  {
+    type: "export_control",
+    terms: [
+      "出口管制",
+      "科技管制",
+      "制裁",
+      "禁令",
+      "限制",
+      "dual-use",
+      "export control",
+      "sanction",
+      "restriction",
+      "ban",
+    ],
+  },
+  {
+    type: "tech_investment",
+    terms: [
+      "半導體",
+      "晶片",
+      "人工智慧",
+      "AI晶片",
+      "資料中心",
+      "投資",
+      "設廠",
+      "擴廠",
+      "建設",
+      "semiconductor",
+      "chip",
+      "AI",
+      "investment",
+      "data center",
+      "fab",
+    ],
+  },
+  {
+    type: "nuclear_diplomacy",
+    terms: [
+      "核",
+      "核查",
+      "IAEA",
+      "核協議",
+      "鈾",
+      "nuclear",
+      "inspectors",
+      "uranium",
+    ],
+  },
+  {
+    type: "election",
+    terms: [
+      "選舉",
+      "大選",
+      "投票",
+      "決選",
+      "election",
+      "vote",
+      "ballot",
+      "runoff",
+    ],
+  },
+  {
+    type: "government_formation",
+    terms: [
+      "組閣",
+      "聯合政府",
+      "少數政府",
+      "內閣",
+      "不信任投票",
+      "government formation",
+      "coalition government",
+      "minority government",
+      "cabinet",
+      "no-confidence",
+    ],
+  },
+  {
+    type: "polling",
+    terms: [
+      "民調",
+      "支持率",
+      "approval rating",
+      "poll",
+      "polling",
+      "survey",
+    ],
+  },
+  {
+    type: "trade_policy",
+    terms: [
+      "關稅",
+      "貿易",
+      "供應鏈",
+      "補貼",
+      "產業政策",
+      "tariff",
+      "trade",
+      "supply chain",
+      "subsidy",
+      "industrial policy",
+    ],
+  },
+  {
+    type: "diplomacy",
+    terms: [
+      "訪問",
+      "會晤",
+      "會談",
+      "峰會",
+      "協議",
+      "談判",
+      "visit",
+      "meet",
+      "talks",
+      "summit",
+      "agreement",
+      "negotiation",
+    ],
+  },
+  {
+    type: "energy",
+    terms: [
+      "能源",
+      "石油",
+      "天然氣",
+      "核電",
+      "oil",
+      "gas",
+      "energy",
+      "nuclear power",
+    ],
+  },
+  {
+    type: "climate_policy",
+    terms: [
+      "氣候",
+      "碳",
+      "淨零",
+      "ESG",
+      "CBAM",
+      "永續",
+      "climate",
+      "carbon",
+      "net zero",
+      "sustainable finance",
+    ],
+  },
+];
+
+/* ============================================================================
+ * 7. Utility functions
  * ========================================================================== */
 
 function toNumber(value: number | string | null | undefined) {
@@ -881,7 +1149,81 @@ function normalizeAliasList(values: string[]) {
 }
 
 /* ============================================================================
- * 7. Signal extraction
+ * 8. Event type detection
+ * ========================================================================== */
+
+function detectEventTypesFromText(text: string): EventType[] {
+  const types = EVENT_TYPE_RULES.filter((rule) =>
+    rule.terms.some((term) => includesTerm(text, term))
+  ).map((rule) => rule.type);
+
+  return unique(types);
+}
+
+function getArticleEventTypes(article: Article): EventType[] {
+  const text = [
+    article.title,
+    article.summary,
+    article.region,
+    article.category,
+    ...(article.topic_tags ?? []),
+    ...(article.matched_rules ?? []),
+    ...(article.event_keywords ?? []),
+  ].join(" ");
+
+  const types = detectEventTypesFromText(text);
+
+  return types.length > 0 ? types : ["unknown"];
+}
+
+function getClusterEventTypes(cluster: ClusterDraft): EventType[] {
+  const types = unique(
+    cluster.articles.flatMap((article) => getArticleEventTypes(article))
+  );
+
+  return types.length > 0 ? types : ["unknown"];
+}
+
+function areEventTypesCompatible(article: Article, cluster: ClusterDraft) {
+  const articleTypes = getArticleEventTypes(article);
+  const clusterTypes = getClusterEventTypes(cluster);
+
+  if (articleTypes.includes("unknown") || clusterTypes.includes("unknown")) {
+    return true;
+  }
+
+  const directOverlap = articleTypes.some((type) => clusterTypes.includes(type));
+
+  if (directOverlap) return true;
+
+  const compatiblePairs = new Set([
+    "export_control|trade_policy",
+    "trade_policy|export_control",
+    "export_control|tech_investment",
+    "tech_investment|export_control",
+    "tech_investment|trade_policy",
+    "trade_policy|tech_investment",
+    "election|government_formation",
+    "government_formation|election",
+    "election|polling",
+    "polling|election",
+    "government_formation|polling",
+    "polling|government_formation",
+    "nuclear_diplomacy|diplomacy",
+    "diplomacy|nuclear_diplomacy",
+    "military_conflict|diplomacy",
+    "diplomacy|military_conflict",
+  ]);
+
+  return articleTypes.some((articleType) =>
+    clusterTypes.some((clusterType) =>
+      compatiblePairs.has(`${articleType}|${clusterType}`)
+    )
+  );
+}
+
+/* ============================================================================
+ * 9. Signal extraction
  * ========================================================================== */
 
 function extractAliases(text: string) {
@@ -928,6 +1270,7 @@ function fallbackTokens(text: string) {
       .filter((token) => !STOP_WORDS.has(token))
       .filter((token) => !STOP_WORDS.has(normalize(token)))
       .filter((token) => !BROAD_CLUSTER_TERMS.has(token))
+      .filter((token) => !SOURCE_ARTIFACT_TERMS.has(normalize(token)))
       .slice(0, 20)
   );
 }
@@ -947,6 +1290,7 @@ function getEventSignal(article: Article): EventSignal {
       .filter((keyword) => !STOP_WORDS.has(keyword))
       .filter((keyword) => !STOP_WORDS.has(normalize(keyword)))
       .filter((keyword) => !BROAD_CLUSTER_TERMS.has(keyword))
+      .filter((keyword) => !SOURCE_ARTIFACT_TERMS.has(normalize(keyword)))
   );
 
   const fallback = fallbackTokens(text);
@@ -973,7 +1317,9 @@ function getEventSignal(article: Article): EventSignal {
     ...aliasSignals,
     ...storedKeywords,
     ...fallback,
-  ]).filter((item) => !BROAD_CLUSTER_TERMS.has(item));
+  ])
+    .filter((item) => !BROAD_CLUSTER_TERMS.has(item))
+    .filter((item) => !SOURCE_ARTIFACT_TERMS.has(normalize(item)));
 
   return {
     entities,
@@ -984,7 +1330,7 @@ function getEventSignal(article: Article): EventSignal {
 }
 
 /* ============================================================================
- * 8. Cluster scoring logic
+ * 10. Cluster scoring logic
  * ========================================================================== */
 
 function overlapItems(a: string[], b: string[]) {
@@ -1063,14 +1409,17 @@ function clusterScore(article: Article, cluster: ClusterDraft) {
     getSpecificOverlap(article, cluster);
 
   const strongEntityOverlap = getStrongItems(entityOverlap);
+  const specificActionOverlap = getSpecificActionItems(actionOverlap);
+  const specificTopicOverlap = getSpecificTopicItems(topicOverlap);
 
   let score = 0;
 
-  score += strongEntityOverlap.length * 6;
+  score += strongEntityOverlap.length * 7;
   score += Math.min(entityOverlap.length - strongEntityOverlap.length, 1) * 1;
-  score += actionOverlap.length * 3;
-  score += topicOverlap.length * 2;
-  score += Math.min(allOverlap.length, 5);
+  score += specificActionOverlap.length * 4;
+  score += Math.max(actionOverlap.length - specificActionOverlap.length, 0) * 1;
+  score += specificTopicOverlap.length * 2;
+  score += Math.min(allOverlap.length, 3);
 
   if (
     article.category &&
@@ -1087,9 +1436,12 @@ function clusterScore(article: Article, cluster: ClusterDraft) {
 function shouldJoinCluster(article: Article, cluster: ClusterDraft) {
   if (!isWithinTimeWindow(article, cluster)) return false;
   if (hasContradictoryRegion(article, cluster)) return false;
+  if (!areEventTypesCompatible(article, cluster)) return false;
 
-  const { entityOverlap, actionOverlap, topicOverlap, allOverlap } =
-    getSpecificOverlap(article, cluster);
+  const { entityOverlap, actionOverlap, topicOverlap } = getSpecificOverlap(
+    article,
+    cluster
+  );
 
   const score = clusterScore(article, cluster);
   const clusterSize = cluster.articles.length;
@@ -1098,62 +1450,65 @@ function shouldJoinCluster(article: Article, cluster: ClusterDraft) {
     sources.length === 1 && sources[0] === article.source;
 
   const strongEntityOverlap = getStrongItems(entityOverlap);
+  const specificActionOverlap = getSpecificActionItems(actionOverlap);
+  const specificTopicOverlap = getSpecificTopicItems(topicOverlap);
 
   const hasStrongEntity = strongEntityOverlap.length >= 1;
   const hasMultipleStrongEntities = strongEntityOverlap.length >= 2;
+  const hasSpecificAction = specificActionOverlap.length >= 1;
+  const hasSpecificTopic = specificTopicOverlap.length >= 1;
 
-  const hasAction = actionOverlap.length >= 1;
-  const hasTopic = topicOverlap.length >= 1;
-
-  const hasEntityAndAction = hasStrongEntity && hasAction;
-  const hasEntityAndTopic = hasStrongEntity && hasTopic;
-
-  const hasStrongKeywordOverlap = allOverlap.length >= 6;
+  const hasEntityAndAction = hasStrongEntity && hasSpecificAction;
+  const hasEntityAndTopic = hasStrongEntity && hasSpecificTopic;
 
   const onlyWeakEntityOverlap =
     entityOverlap.length > 0 &&
     strongEntityOverlap.length === 0 &&
-    actionOverlap.length === 0;
+    specificActionOverlap.length === 0 &&
+    specificTopicOverlap.length === 0;
 
   if (onlyWeakEntityOverlap) return false;
 
+  const hasConcreteAnchor =
+    hasStrongEntity || hasSpecificAction || hasSpecificTopic;
+
+  if (!hasConcreteAnchor) return false;
+
   if (sameSourceOnly && clusterSize <= 2) {
     return (
-      score >= 13 &&
+      score >= 15 &&
       (hasEntityAndAction ||
         hasMultipleStrongEntities ||
-        (hasEntityAndTopic && hasAction))
+        (hasEntityAndTopic && hasSpecificAction))
     );
+  }
+
+  if (clusterSize >= 10) {
+    return score >= 20 && (hasEntityAndAction || hasMultipleStrongEntities);
   }
 
   if (clusterSize >= 6) {
     return (
-      score >= 15 &&
+      score >= 17 &&
       (hasEntityAndAction || hasMultipleStrongEntities || hasEntityAndTopic)
     );
   }
 
   if (clusterSize >= 3) {
     return (
-      score >= 12 &&
-      (hasEntityAndAction ||
-        hasMultipleStrongEntities ||
-        hasEntityAndTopic ||
-        (hasStrongKeywordOverlap && hasStrongEntity))
+      score >= 14 &&
+      (hasEntityAndAction || hasMultipleStrongEntities || hasEntityAndTopic)
     );
   }
 
   return (
-    score >= 10 &&
-    (hasEntityAndAction ||
-      hasMultipleStrongEntities ||
-      hasEntityAndTopic ||
-      (hasStrongKeywordOverlap && hasStrongEntity))
+    score >= 11 &&
+    (hasEntityAndAction || hasMultipleStrongEntities || hasEntityAndTopic)
   );
 }
 
 /* ============================================================================
- * 9. Cluster creation and summaries
+ * 11. Cluster creation and summaries
  * ========================================================================== */
 
 function makeClusterTitle(articles: Article[]) {
@@ -1334,7 +1689,7 @@ function buildClusters(articles: Article[]) {
 }
 
 /* ============================================================================
- * 10. API route
+ * 12. API route
  * ========================================================================== */
 
 export async function GET() {
@@ -1451,7 +1806,7 @@ export async function GET() {
     clusters: insertedClusters,
     relations: insertedRelations,
     method:
-      "strict event clustering with weak-entity control and categorized alias taxonomy",
+      "high precision event clustering with event-type gate and concrete anchors",
     max_articles: MAX_ARTICLES,
     time_window_hours: TIME_WINDOW_HOURS,
   });
