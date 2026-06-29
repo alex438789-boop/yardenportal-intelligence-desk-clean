@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 
 const MAX_ARTICLES = 150;
+const MIN_ARTICLE_SCORE = 5.8;
 
 type FeedItem = {
   title: string;
@@ -15,11 +16,19 @@ type FeedItem = {
 
 type ScoringRule = {
   label: string;
-  keywords: string[];
+  keywords: string[] | null;
+  must_keywords: string[] | null;
+  boost_keywords: string[] | null;
+  exclude_keywords: string[] | null;
   score_delta: number | string;
   region: string | null;
   category: string | null;
   tags: string[] | null;
+  domain_tags: string[] | null;
+  region_tags: string[] | null;
+  risk_tags: string[] | null;
+  rule_type: string | null;
+  priority: number | null;
   is_active: boolean;
 };
 
@@ -78,12 +87,35 @@ function parseRss(xml: string): FeedItem[] {
     .filter((item) => item.title && item.link);
 }
 
-function includesAny(text: string, keywords: string[]) {
-  const normalizedText = text.toLowerCase();
+function normalizeText(value: string) {
+  return value.toLowerCase();
+}
 
-  return keywords.some((keyword) =>
-    normalizedText.includes(keyword.toLowerCase())
+function includesAny(text: string, keywords: string[]) {
+  const normalizedText = normalizeText(text);
+
+  return keywords.some((keyword) => {
+    const cleanKeyword = keyword.trim();
+    if (!cleanKeyword) return false;
+
+    return normalizedText.includes(cleanKeyword.toLowerCase());
+  });
+}
+
+function unique(values: string[]) {
+  return Array.from(
+    new Set(values.map((value) => value.trim()).filter(Boolean))
   );
+}
+
+function getRuleMustKeywords(rule: ScoringRule) {
+  const mustKeywords = rule.must_keywords ?? [];
+
+  if (mustKeywords.length > 0) {
+    return mustKeywords;
+  }
+
+  return rule.keywords ?? [];
 }
 
 function analyseArticleWithRules(
@@ -93,38 +125,86 @@ function analyseArticleWithRules(
 ) {
   const text = `${title} ${summary ?? ""}`;
 
-  let score = 5.5;
+  let score = 5.0;
   let region = "全球";
   let category = "國際政治";
 
   const topicTags = new Set<string>();
+  const domainTags = new Set<string>();
+  const regionTags = new Set<string>();
+  const riskTags = new Set<string>();
   const matchedRules = new Set<string>();
+  const excludedRules = new Set<string>();
 
-  for (const rule of rules) {
-    if (!rule.is_active) continue;
+  const activeRules = rules
+    .filter((rule) => rule.is_active)
+    .sort((a, b) => (b.priority ?? 1) - (a.priority ?? 1));
 
-    const keywords = rule.keywords ?? [];
+  for (const rule of activeRules) {
+    const mustKeywords = getRuleMustKeywords(rule);
+    const boostKeywords = rule.boost_keywords ?? [];
+    const excludeKeywords = rule.exclude_keywords ?? [];
 
-    if (includesAny(text, keywords)) {
-      score += Number(rule.score_delta);
-
-      if (rule.region) region = rule.region;
-      if (rule.category) category = rule.category;
-
-      for (const tag of rule.tags ?? []) {
-        topicTags.add(tag);
-      }
-
-      matchedRules.add(rule.label);
+    if (excludeKeywords.length > 0 && includesAny(text, excludeKeywords)) {
+      excludedRules.add(rule.label);
+      continue;
     }
+
+    const hasMustMatch =
+      mustKeywords.length > 0 && includesAny(text, mustKeywords);
+
+    if (!hasMustMatch) {
+      continue;
+    }
+
+    const hasBoostMatch =
+      boostKeywords.length > 0 && includesAny(text, boostKeywords);
+
+    score += Number(rule.score_delta);
+
+    if (hasBoostMatch) {
+      score += 0.6;
+    }
+
+    if (rule.region) {
+      region = rule.region;
+      regionTags.add(rule.region);
+    }
+
+    if (rule.category) {
+      category = rule.category;
+      domainTags.add(rule.category);
+    }
+
+    for (const tag of rule.tags ?? []) {
+      topicTags.add(tag);
+    }
+
+    for (const tag of rule.domain_tags ?? []) {
+      domainTags.add(tag);
+    }
+
+    for (const tag of rule.region_tags ?? []) {
+      regionTags.add(tag);
+    }
+
+    for (const tag of rule.risk_tags ?? []) {
+      riskTags.add(tag);
+    }
+
+    matchedRules.add(rule.label);
   }
 
   return {
     score: Math.min(10, Math.round(score * 10) / 10),
     region,
     category,
-    topic_tags: Array.from(topicTags),
-    matched_rules: Array.from(matchedRules),
+    topic_tags: unique(Array.from(topicTags)),
+    domain_tags: unique(Array.from(domainTags)),
+    region_tags: unique(Array.from(regionTags)),
+    risk_tags: unique(Array.from(riskTags)),
+    matched_rules: unique(Array.from(matchedRules)),
+    excluded_rules: unique(Array.from(excludedRules)),
   };
 }
 
@@ -368,7 +448,9 @@ export async function GET() {
 
   const { data: scoringRules, error: rulesError } = await supabase
     .from("scoring_rules")
-    .select("label,keywords,score_delta,region,category,tags,is_active")
+    .select(
+      "label,keywords,must_keywords,boost_keywords,exclude_keywords,score_delta,region,category,tags,domain_tags,region_tags,risk_tags,rule_type,priority,is_active"
+    )
     .eq("is_active", true);
 
   if (rulesError) {
@@ -380,6 +462,7 @@ export async function GET() {
 
   let upserted = 0;
   let skipped = 0;
+  let excluded = 0;
   const errors: string[] = [];
 
   if (cleanupResult.error) {
@@ -413,7 +496,14 @@ export async function GET() {
           scoringRules ?? []
         );
 
-        if (analysis.matched_rules.length === 0) {
+        if (analysis.excluded_rules.length > 0) {
+          excluded += 1;
+        }
+
+        if (
+          analysis.matched_rules.length === 0 ||
+          analysis.score < MIN_ARTICLE_SCORE
+        ) {
           skipped += 1;
           continue;
         }
@@ -435,6 +525,9 @@ export async function GET() {
             region: analysis.region,
             category: analysis.category,
             topic_tags: analysis.topic_tags,
+            domain_tags: analysis.domain_tags,
+            region_tags: analysis.region_tags,
+            risk_tags: analysis.risk_tags,
             matched_rules: analysis.matched_rules,
             event_fingerprint: eventData.event_fingerprint,
             event_keywords: eventData.event_keywords,
@@ -465,10 +558,13 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
+    method: "rule based article intake with domain / region / risk tags",
     upserted,
     skipped,
+    excluded,
     deleted_inactive_source_articles: cleanupResult.deleted,
     deleted_old_articles: pruneResult.deleted,
+    min_article_score: MIN_ARTICLE_SCORE,
     max_articles: MAX_ARTICLES,
     active_sources: activeSources.length,
     errors,
