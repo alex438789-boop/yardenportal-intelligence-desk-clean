@@ -4,23 +4,17 @@ import { RebuildClustersButton } from "@/components/rebuild-clusters-button";
 
 export const dynamic = "force-dynamic";
 
+type RelatedArticle = {
+  id: string;
+  title: string;
+  source: string;
+  url: string;
+  published_at: string | null;
+  summary: string | null;
+};
+
 type ClusterArticleRelation = {
-  articles:
-    | {
-        id: string;
-        title: string;
-        source: string;
-        url: string;
-        published_at: string | null;
-      }
-    | {
-        id: string;
-        title: string;
-        source: string;
-        url: string;
-        published_at: string | null;
-      }[]
-    | null;
+  articles: RelatedArticle | RelatedArticle[] | null;
 };
 
 type Cluster = {
@@ -74,10 +68,65 @@ function hoursSince(date: string | null) {
   return Math.max(0, (Date.now() - time) / 1000 / 60 / 60);
 }
 
-function getRelatedArticles(cluster: Cluster) {
+function isCrisisGroupSource(source: string) {
+  return source.toLowerCase().includes("crisis group");
+}
+
+function isCrisisGroupBriefTitle(title: string) {
+  return /^[A-Z][A-Za-z\s.'()/-]+ \d{1,2} [A-Z][a-z]+ \d{4} #\d+$/.test(
+    title.trim()
+  );
+}
+
+function cleanSummaryText(value: string | null | undefined) {
+  if (!value) return "";
+
+  return value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function firstReadableSentence(value: string | null | undefined) {
+  const clean = cleanSummaryText(value);
+
+  if (!clean) return "";
+
+  const sentence = clean.split(/(?<=[.!?。！？])\s+/)[0] ?? clean;
+
+  return sentence.length > 180 ? `${sentence.slice(0, 180)}...` : sentence;
+}
+
+function getArticleDisplayTitle(article: RelatedArticle) {
+  if (
+    isCrisisGroupSource(article.source) &&
+    isCrisisGroupBriefTitle(article.title)
+  ) {
+    const summaryTitle = firstReadableSentence(article.summary);
+
+    if (summaryTitle) return summaryTitle;
+  }
+
+  return article.title;
+}
+
+function shouldShowOriginalArticleTitle(article: RelatedArticle) {
+  return (
+    isCrisisGroupSource(article.source) &&
+    isCrisisGroupBriefTitle(article.title) &&
+    Boolean(firstReadableSentence(article.summary))
+  );
+}
+
+function getRelatedArticles(cluster: Cluster): RelatedArticle[] {
   return (cluster.cluster_articles ?? [])
     .flatMap((relation) => {
       if (!relation.articles) return [];
+
       return Array.isArray(relation.articles)
         ? relation.articles
         : [relation.articles];
@@ -86,7 +135,9 @@ function getRelatedArticles(cluster: Cluster) {
 }
 
 function isRealCluster(cluster: Cluster) {
-  const articleCount = cluster.article_count ?? getRelatedArticles(cluster).length;
+  const articleCount =
+    cluster.article_count ?? getRelatedArticles(cluster).length;
+
   return articleCount >= 2;
 }
 
@@ -161,7 +212,8 @@ function getRiskBonus(cluster: Cluster) {
 
 function calculatePriority(cluster: Cluster): EnrichedCluster {
   const baseScore = toNumber(cluster.score);
-  const articleCount = cluster.article_count ?? getRelatedArticles(cluster).length;
+  const articleCount =
+    cluster.article_count ?? getRelatedArticles(cluster).length;
   const sourceCount = cluster.source_count ?? 1;
 
   const articleBonus = Math.min(articleCount * 0.5, 2.5);
@@ -180,9 +232,9 @@ function calculatePriority(cluster: Cluster): EnrichedCluster {
 
   const reasons: string[] = [];
 
-  if (sourceCount >= 2) reasons.push(`${sourceCount} 個來源追蹤`);
-  if (articleCount >= 3) reasons.push(`${articleCount} 篇文章形成事件線`);
-  if (articleCount === 2) reasons.push("2 篇文章形成初步事件線");
+  if (sourceCount >= 2) reasons.push(`${sourceCount} 個來源共同報導`);
+  if (articleCount >= 3) reasons.push(`${articleCount} 篇相關文章`);
+  if (articleCount === 2) reasons.push("2 篇相關文章");
 
   if (recencyBonus >= 1.5) reasons.push("24 小時內最新發展");
   else if (recencyBonus >= 1.0) reasons.push("48 小時內更新");
@@ -334,7 +386,16 @@ function ClusterCard({
                 rel="noreferrer"
                 className="block rounded-lg border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50"
               >
-                <p className="font-medium text-slate-900">{article.title}</p>
+                <p className="font-medium text-slate-900">
+                  {getArticleDisplayTitle(article)}
+                </p>
+
+                {shouldShowOriginalArticleTitle(article) && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    CrisisWatch entry: {article.title}
+                  </p>
+                )}
+
                 <p className="mt-1 text-xs text-slate-500">
                   {article.source} · {formatDate(article.published_at)}
                 </p>
@@ -404,7 +465,8 @@ export default async function ClustersPage() {
           title,
           source,
           url,
-          published_at
+          published_at,
+          summary
         )
       )
     `
@@ -424,7 +486,6 @@ export default async function ClustersPage() {
   }
 
   const rawClusters = (clusters ?? []) as Cluster[];
-
   const realClusters = rawClusters.filter(isRealCluster);
 
   const enrichedClusters = realClusters
@@ -464,16 +525,16 @@ export default async function ClustersPage() {
     <main className="mx-auto max-w-6xl px-6 py-10">
       <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-sm font-medium text-slate-500">
-            Story Clusters
-          </p>
+          <p className="text-sm font-medium text-slate-500">Story Clusters</p>
 
           <h1 className="mt-2 text-3xl font-bold tracking-tight">
             Clusters 事件群組
           </h1>
 
           <p className="mt-3 max-w-3xl text-slate-600">
-            這裡只顯示由 2 篇以上 articles 組成的事件群組。單篇文章不會被視為 cluster。排序依據事件優先級、來源數、新鮮度、風險訊號與政策／產業相關性；台灣相關事件會放入 Taiwan Watch 作為追蹤群組，但不會自動獲得額外排序加權。
+            這裡只顯示由 2 篇以上 articles
+            組成的事件群組。單篇文章不會被視為 cluster。排序依據事件優先級、來源數、新鮮度、風險訊號與政策／產業相關性；台灣相關事件會放入
+            Taiwan Watch 作為追蹤群組，但不會自動獲得額外排序加權。
           </p>
         </div>
 
@@ -498,7 +559,9 @@ export default async function ClustersPage() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-medium text-slate-500">Single Articles Hidden</p>
+          <p className="text-xs font-medium text-slate-500">
+            Single Articles Hidden
+          </p>
           <p className="mt-2 text-3xl font-bold text-slate-950">
             {ignoredSingleArticleCount}
           </p>
@@ -560,7 +623,8 @@ export default async function ClustersPage() {
 
       {enrichedClusters.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
-          目前還沒有 2 篇以上文章組成的 clusters。單篇文章會留在 Articles，不會顯示在事件群組。
+          目前還沒有 2 篇以上文章組成的
+          clusters。單篇文章會留在 Articles，不會顯示在事件群組。
         </div>
       )}
     </main>
