@@ -1153,11 +1153,15 @@ function normalizeAliasList(values: string[]) {
  * ========================================================================== */
 
 function detectEventTypesFromText(text: string): EventType[] {
+
   const types = EVENT_TYPE_RULES.filter((rule) =>
+
     rule.terms.some((term) => includesTerm(text, term))
+
   ).map((rule) => rule.type);
 
-  return unique(types);
+  return Array.from(new Set(types));
+
 }
 
 function getArticleEventTypes(article: Article): EventType[] {
@@ -1177,11 +1181,15 @@ function getArticleEventTypes(article: Article): EventType[] {
 }
 
 function getClusterEventTypes(cluster: ClusterDraft): EventType[] {
-  const types = unique(
-    cluster.articles.flatMap((article) => getArticleEventTypes(article))
+
+  const types = Array.from(
+
+    new Set(cluster.articles.flatMap((article) => getArticleEventTypes(article)))
+
   );
 
   return types.length > 0 ? types : ["unknown"];
+
 }
 
 function areEventTypesCompatible(article: Article, cluster: ClusterDraft) {
