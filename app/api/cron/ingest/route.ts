@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 const MAX_ARTICLES = 150;
 const MIN_ARTICLE_SCORE = 5.8;
+const MAX_ITEMS_PER_SOURCE = 30;
 
 type FeedItem = {
   title: string;
@@ -70,7 +71,7 @@ function parseRss(xml: string): FeedItem[] {
   const itemBlocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
 
   return itemBlocks
-    .slice(0, 10)
+    .slice(0, MAX_ITEMS_PER_SOURCE)
     .map((item) => {
       const title = stripHtml(getTag(item, "title"));
       const link = stripHtml(getTag(item, "link"));
@@ -589,6 +590,7 @@ export async function GET() {
     deleted_old_articles: pruneResult.deleted,
     min_article_score: MIN_ARTICLE_SCORE,
     max_articles: MAX_ARTICLES,
+    max_items_per_source: MAX_ITEMS_PER_SOURCE,
     active_sources: activeSources.length,
     errors,
   });
