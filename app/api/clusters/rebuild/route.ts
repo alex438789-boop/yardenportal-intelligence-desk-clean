@@ -144,11 +144,37 @@ const STOP_WORDS = new Set([
   "why",
 ]);
 
+const WEAK_ENTITIES = new Set([
+  "中國",
+  "美國",
+  "台灣",
+  "臺灣",
+  "日本",
+  "韓國",
+  "北韓",
+  "歐盟",
+  "歐洲",
+  "中東",
+  "東南亞",
+  "全球",
+  "國際",
+  "北京",
+  "東京",
+  "首爾",
+  "台北",
+  "華府",
+]);
+
+function isWeakEntity(value: string) {
+  return WEAK_ENTITIES.has(value);
+}
+
+function getStrongItems(values: string[]) {
+  return values.filter((value) => !isWeakEntity(value));
+}
+
 /* ============================================================================
  * 4. Alias taxonomy
- *
- * 用 tuple entries 建立 ALIAS_MAP，避免 object literal 重複 key 造成 build error。
- * 後面重複出現的 alias 會覆蓋前面的 canonical value，但不會讓 TypeScript 報錯。
  * ========================================================================== */
 
 const PERSON_ALIASES: [string, string][] = [
@@ -287,7 +313,6 @@ const COUNTRY_AND_PLACE_ALIASES: [string, string][] = [
 ];
 
 const SEMICONDUCTOR_AND_AI_ALIASES: [string, string][] = [
-  // Core AI terms
   ["ai", "人工智慧"],
   ["artificial intelligence", "人工智慧"],
   ["generative ai", "生成式AI"],
@@ -304,8 +329,6 @@ const SEMICONDUCTOR_AND_AI_ALIASES: [string, string][] = [
   ["gpus", "GPU"],
   ["accelerator", "AI加速器"],
   ["accelerators", "AI加速器"],
-
-  // Semiconductor terms
   ["semiconductor", "半導體"],
   ["semiconductors", "半導體"],
   ["chip", "晶片"],
@@ -326,8 +349,6 @@ const SEMICONDUCTOR_AND_AI_ALIASES: [string, string][] = [
   ["fabs", "晶圓廠"],
   ["lithography", "微影"],
   ["euv", "EUV"],
-
-  // Semiconductor companies
   ["tsmc", "台積電"],
   ["taiwan semiconductor", "台積電"],
   ["taiwan semiconductor manufacturing", "台積電"],
@@ -349,8 +370,6 @@ const SEMICONDUCTOR_AND_AI_ALIASES: [string, string][] = [
   ["qualcomm", "高通"],
   ["arm", "ARM"],
   ["softbank", "軟銀"],
-
-  // AI / cloud companies
   ["openai", "OpenAI"],
   ["microsoft", "微軟"],
   ["google", "Google"],
@@ -519,7 +538,6 @@ const ALIAS_MAP: Record<string, string> = Object.fromEntries(
  * ========================================================================== */
 
 const KNOWN_ENTITIES = [
-  // People
   "川普",
   "拜登",
   "范斯",
@@ -548,8 +566,6 @@ const KNOWN_ENTITIES = [
   "馬克宏",
   "梅洛尼",
   "馮德萊恩",
-
-  // Governments / institutions
   "美國國會",
   "美國參議院",
   "美國眾議院",
@@ -584,8 +600,6 @@ const KNOWN_ENTITIES = [
   "WHO",
   "IMF",
   "世界銀行",
-
-  // Countries / regions
   "中國",
   "美國",
   "台灣",
@@ -629,8 +643,6 @@ const KNOWN_ENTITIES = [
   "胡塞",
   "烏克蘭",
   "俄羅斯",
-
-  // Semiconductor / AI companies
   "台積電",
   "輝達",
   "超微",
@@ -661,7 +673,6 @@ const KNOWN_ENTITIES = [
 ];
 
 const ACTION_TERMS = [
-  // Diplomacy / politics
   "訪問",
   "訪台",
   "訪美",
@@ -694,8 +705,6 @@ const ACTION_TERMS = [
   "抗議",
   "示威",
   "峰會",
-
-  // Security / military
   "制裁",
   "反制",
   "封鎖",
@@ -718,8 +727,6 @@ const ACTION_TERMS = [
   "發射",
   "入侵",
   "衝突",
-
-  // Economy / industry / technology
   "限制",
   "禁令",
   "補貼",
@@ -741,7 +748,6 @@ const ACTION_TERMS = [
 ];
 
 const POLICY_TOPICS = [
-  // Semiconductor / AI
   "人工智慧",
   "生成式AI",
   "大型語言模型",
@@ -765,8 +771,6 @@ const POLICY_TOPICS = [
   "科技供應鏈",
   "經濟安全",
   "AI基礎設施",
-
-  // Resources / economy
   "稀土",
   "關鍵礦物",
   "供應鏈",
@@ -788,8 +792,6 @@ const POLICY_TOPICS = [
   "制裁",
   "關稅",
   "補貼",
-
-  // Security / defense
   "國防預算",
   "軍費",
   "飛彈",
@@ -934,7 +936,6 @@ function getEventSignal(article: Article): EventSignal {
   const text = `${article.title} ${article.summary ?? ""}`;
 
   const aliasSignals = extractAliases(text);
-
   const knownEntities = extractKnownTerms(text, KNOWN_ENTITIES);
   const actions = extractKnownTerms(text, ACTION_TERMS);
   const policyTopics = extractKnownTerms(text, POLICY_TOPICS);
@@ -1061,12 +1062,15 @@ function clusterScore(article: Article, cluster: ClusterDraft) {
   const { entityOverlap, actionOverlap, topicOverlap, allOverlap } =
     getSpecificOverlap(article, cluster);
 
+  const strongEntityOverlap = getStrongItems(entityOverlap);
+
   let score = 0;
 
-  score += entityOverlap.length * 5;
+  score += strongEntityOverlap.length * 6;
+  score += Math.min(entityOverlap.length - strongEntityOverlap.length, 1) * 1;
   score += actionOverlap.length * 3;
   score += topicOverlap.length * 2;
-  score += Math.min(allOverlap.length, 6);
+  score += Math.min(allOverlap.length, 5);
 
   if (
     article.category &&
@@ -1089,21 +1093,43 @@ function shouldJoinCluster(article: Article, cluster: ClusterDraft) {
 
   const score = clusterScore(article, cluster);
   const clusterSize = cluster.articles.length;
+  const sources = unique(cluster.articles.map((item) => item.source));
+  const sameSourceOnly =
+    sources.length === 1 && sources[0] === article.source;
 
-  const hasEntityAndAction =
-    entityOverlap.length >= 1 && actionOverlap.length >= 1;
+  const strongEntityOverlap = getStrongItems(entityOverlap);
 
-  const hasMultipleEntities = entityOverlap.length >= 2;
+  const hasStrongEntity = strongEntityOverlap.length >= 1;
+  const hasMultipleStrongEntities = strongEntityOverlap.length >= 2;
 
-  const hasEntityAndTopic =
-    entityOverlap.length >= 1 && topicOverlap.length >= 1;
+  const hasAction = actionOverlap.length >= 1;
+  const hasTopic = topicOverlap.length >= 1;
 
-  const hasStrongKeywordOverlap = allOverlap.length >= 5;
+  const hasEntityAndAction = hasStrongEntity && hasAction;
+  const hasEntityAndTopic = hasStrongEntity && hasTopic;
+
+  const hasStrongKeywordOverlap = allOverlap.length >= 6;
+
+  const onlyWeakEntityOverlap =
+    entityOverlap.length > 0 &&
+    strongEntityOverlap.length === 0 &&
+    actionOverlap.length === 0;
+
+  if (onlyWeakEntityOverlap) return false;
+
+  if (sameSourceOnly && clusterSize <= 2) {
+    return (
+      score >= 13 &&
+      (hasEntityAndAction ||
+        hasMultipleStrongEntities ||
+        (hasEntityAndTopic && hasAction))
+    );
+  }
 
   if (clusterSize >= 6) {
     return (
       score >= 15 &&
-      (hasEntityAndAction || hasMultipleEntities || hasEntityAndTopic)
+      (hasEntityAndAction || hasMultipleStrongEntities || hasEntityAndTopic)
     );
   }
 
@@ -1111,18 +1137,18 @@ function shouldJoinCluster(article: Article, cluster: ClusterDraft) {
     return (
       score >= 12 &&
       (hasEntityAndAction ||
-        hasMultipleEntities ||
+        hasMultipleStrongEntities ||
         hasEntityAndTopic ||
-        hasStrongKeywordOverlap)
+        (hasStrongKeywordOverlap && hasStrongEntity))
     );
   }
 
   return (
-    score >= 9 &&
+    score >= 10 &&
     (hasEntityAndAction ||
-      hasMultipleEntities ||
+      hasMultipleStrongEntities ||
       hasEntityAndTopic ||
-      hasStrongKeywordOverlap)
+      (hasStrongKeywordOverlap && hasStrongEntity))
   );
 }
 
@@ -1157,19 +1183,13 @@ function makeChineseEventLabel(articles: Article[]) {
     .filter((item) => !BROAD_CLUSTER_TERMS.has(item))
     .slice(0, 8);
 
-  if (signals.length > 0) {
-    return signals.join("、");
-  }
+  if (signals.length > 0) return signals.join("、");
 
   const chineseTitle = articles.find((article) =>
     hasChineseText(article.title)
   )?.title;
 
-  if (chineseTitle) {
-    return chineseTitle;
-  }
-
-  return "此事件";
+  return chineseTitle ?? "此事件";
 }
 
 function makeArticleExampleText(article: Article) {
@@ -1234,7 +1254,6 @@ function makeClusterSummary(articles: Article[]) {
   return `此事件群組由 ${articles.length} 篇新聞組成，來源包括 ${sources.join(
     "、"
   )}。事件主軸為「${eventLabel}」。主要新聞包括：${articleExamples}。`;
-
 }
 
 function updateCluster(cluster: ClusterDraft) {
@@ -1432,7 +1451,7 @@ export async function GET() {
     clusters: insertedClusters,
     relations: insertedRelations,
     method:
-      "entity-action-topic clustering with categorized alias taxonomy and precise latin matching",
+      "strict event clustering with weak-entity control and categorized alias taxonomy",
     max_articles: MAX_ARTICLES,
     time_window_hours: TIME_WINDOW_HOURS,
   });
