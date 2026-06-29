@@ -124,7 +124,6 @@ function includesKeyword(text: string, keyword: string) {
 function includesAny(text: string, keywords: string[]) {
   return keywords.some((keyword) => includesKeyword(text, keyword));
 }
-}
 
 function unique(values: string[]) {
   return Array.from(
