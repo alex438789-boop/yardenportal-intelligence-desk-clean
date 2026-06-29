@@ -1163,20 +1163,33 @@ function normalizeAliasList(values: string[]) {
   return unique(values.map((value) => normalizeAlias(value)));
 }
 
+function truncateText(value: string | null | undefined, maxLength: number) {
+  if (!value) return "";
+
+  const clean = value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return clean.length > maxLength ? `${clean.slice(0, maxLength)}...` : clean;
+}
+
 /* ============================================================================
  * 8. Event type detection
  * ========================================================================== */
 
 function detectEventTypesFromText(text: string): EventType[] {
-
   const types = EVENT_TYPE_RULES.filter((rule) =>
-
     rule.terms.some((term) => includesTerm(text, term))
-
   ).map((rule) => rule.type);
 
   return Array.from(new Set(types));
-
 }
 
 function getArticleEventTypes(article: Article): EventType[] {
@@ -1196,15 +1209,11 @@ function getArticleEventTypes(article: Article): EventType[] {
 }
 
 function getClusterEventTypes(cluster: ClusterDraft): EventType[] {
-
   const types = Array.from(
-
     new Set(cluster.articles.flatMap((article) => getArticleEventTypes(article)))
-
   );
 
   return types.length > 0 ? types : ["unknown"];
-
 }
 
 function areEventTypesCompatible(article: Article, cluster: ClusterDraft) {
@@ -1625,245 +1634,6 @@ function makeClusterSummary(articles: Article[]) {
     )}。簡述：這組新聞大致圍繞「${eventLabel}」相關事件，反映多個來源正在追蹤同一條新聞線索。${coreSignalText}代表性新聞包括：${articleExamples}。`;
   }
 
-function truncateText(value: string | null | undefined, maxLength: number) {
-
-  if (!value) return "";
-
-  const clean = value
-
-    .replace(/<[^>]*>/g, " ")
-
-    .replace(/&lt;/g, "<")
-
-    .replace(/&gt;/g, ">")
-
-    .replace(/&amp;/g, "&")
-
-    .replace(/&nbsp;/g, " ")
-
-    .replace(/&quot;/g, '"')
-
-    .replace(/&#39;/g, "'")
-
-    .replace(/\s+/g, " ")
-
-    .trim();
-
-  return clean.length > maxLength ? `${clean.slice(0, maxLength)}...` : clean;
-
-}
-
-function safeParseGeminiJson(value: string) {
-
-  const cleaned = value
-
-    .replace(/^```json\s*/i, "")
-
-    .replace(/^```\s*/i, "")
-
-    .replace(/```$/i, "")
-
-    .trim();
-
-  try {
-
-    return JSON.parse(cleaned) as Partial<GeneratedClusterText>;
-
-  } catch {
-
-    const match = cleaned.match(/\{[\s\S]*\}/);
-
-    if (!match) return null;
-
-    try {
-
-      return JSON.parse(match[0]) as Partial<GeneratedClusterText>;
-
-    } catch {
-
-      return null;
-
-    }
-
-  }
-
-}
-
-function makeGeminiClusterPrompt(cluster: ClusterDraft) {
-
-  const sources = unique(cluster.articles.map((article) => article.source));
-
-  const articles = cluster.articles
-
-    .slice(0, MAX_GEMINI_ARTICLES_PER_CLUSTER)
-
-    .map((article, index) => {
-
-      return [
-
-        `Article ${index + 1}`,
-
-        `Title: ${article.title}`,
-
-        `Source: ${article.source}`,
-
-        `Published at: ${article.published_at ?? "unknown"}`,
-
-        `Category: ${article.category ?? "unknown"}`,
-
-        `Region: ${article.region ?? "unknown"}`,
-
-        `Summary: ${truncateText(article.summary, 700)}`,
-
-      ].join("\n");
-
-    })
-
-    .join("\n\n");
-
-  return `
-
-你是 YardenPORTAL Intelligence Desk 的國際政治與政策風險分析助手。
-
-請根據下列已經被系統分成同一 cluster 的新聞，生成一個繁體中文 title 和 summary。
-
-嚴格規則：
-
-1. 只能根據提供的新聞內容，不要新增外部事實。
-
-2. 使用繁體中文。
-
-3. title 不超過 28 個中文字。
-
-4. title 必須指出「主要行為者 + 動作 / 爭議 / 風險」，不要只寫國名或地名。
-
-5. summary 80 到 150 個中文字。
-
-6. summary 要說清楚這組新聞在講什麼，以及為什麼值得追蹤。
-
-7. 語氣保持保守、分析性，不要誇大，不要像社論。
-
-8. 不要使用「這個事件群組」「這組新聞」作為 title。
-
-9. 如果新聞其實只是同一區域但不是完全同一事件，請用保守標題，避免過度推論。
-
-10. 只回傳 JSON，不要回傳 markdown，不要解釋。
-
-回傳格式：
-
-{
-
-  "title": "繁體中文標題",
-
-  "summary": "繁體中文摘要"
-
-}
-
-Cluster metadata:
-
-- Current rule-based title: ${cluster.title}
-
-- Current region: ${cluster.region ?? "unknown"}
-
-- Current category: ${cluster.category ?? "unknown"}
-
-- Article count: ${cluster.articles.length}
-
-- Sources: ${sources.join("、")}
-
-Articles:
-
-${articles}
-
-`.trim();
-
-}
-
-async function generateGeminiClusterText(
-
-  cluster: ClusterDraft
-
-): Promise<GeneratedClusterText> {
-
-  const fallback: GeneratedClusterText = {
-
-    title: cluster.title,
-
-    summary: cluster.summary,
-
-    source: "fallback",
-
-  };
-
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) return fallback;
-
-  if (cluster.articles.length < 2) return fallback;
-
-  try {
-
-    const ai = new GoogleGenAI({ apiKey });
-
-    const prompt = makeGeminiClusterPrompt(cluster);
-
-    const responsePromise = ai.models.generateContent({
-
-      model: GEMINI_MODEL,
-
-      contents: prompt,
-
-      config: {
-
-        temperature: 0.2,
-
-        responseMimeType: "application/json",
-
-      },
-
-    });
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-
-      setTimeout(() => {
-
-        reject(new Error("Gemini request timed out"));
-
-      }, GEMINI_TIMEOUT_MS);
-
-    });
-
-    const response = await Promise.race([responsePromise, timeoutPromise]);
-
-    const text = response.text ?? "";
-
-    const parsed = safeParseGeminiJson(text);
-
-    const title = truncateText(parsed?.title, 80);
-
-    const summary = truncateText(parsed?.summary, 500);
-
-    if (!title || !summary) return fallback;
-
-    return {
-
-      title,
-
-      summary,
-
-      source: "gemini",
-
-    };
-
-  } catch {
-
-    return fallback;
-
-  }
-
-}
-
-
   const articleExamples = topArticles
     .map((article) => makeArticleExampleText(article))
     .join("、");
@@ -1871,6 +1641,138 @@ async function generateGeminiClusterText(
   return `此事件群組由 ${articles.length} 篇新聞組成，來源包括 ${sources.join(
     "、"
   )}。事件主軸為「${eventLabel}」。主要新聞包括：${articleExamples}。`;
+}
+
+/* ============================================================================
+ * 11.5 Gemini title and summary generation
+ * ========================================================================== */
+
+function safeParseGeminiJson(value: string) {
+  const cleaned = value
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned) as Partial<GeneratedClusterText>;
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+
+    if (!match) return null;
+
+    try {
+      return JSON.parse(match[0]) as Partial<GeneratedClusterText>;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function makeGeminiClusterPrompt(cluster: ClusterDraft) {
+  const sources = unique(cluster.articles.map((article) => article.source));
+
+  const articles = cluster.articles
+    .slice(0, MAX_GEMINI_ARTICLES_PER_CLUSTER)
+    .map((article, index) => {
+      return [
+        `Article ${index + 1}`,
+        `Title: ${article.title}`,
+        `Source: ${article.source}`,
+        `Published at: ${article.published_at ?? "unknown"}`,
+        `Category: ${article.category ?? "unknown"}`,
+        `Region: ${article.region ?? "unknown"}`,
+        `Summary: ${truncateText(article.summary, 700)}`,
+      ].join("\n");
+    })
+    .join("\n\n");
+
+  return `
+你是 YardenPORTAL Intelligence Desk 的國際政治與政策風險分析助手。
+請根據下列已經被系統分成同一 cluster 的新聞，生成一個繁體中文 title 和 summary。
+
+嚴格規則：
+1. 只能根據提供的新聞內容，不要新增外部事實。
+2. 使用繁體中文。
+3. title 不超過 28 個中文字。
+4. title 必須指出「主要行為者 + 動作 / 爭議 / 風險」，不要只寫國名或地名。
+5. summary 80 到 150 個中文字。
+6. summary 要說清楚這組新聞在講什麼，以及為什麼值得追蹤。
+7. 語氣保持保守、分析性，不要誇大，不要像社論。
+8. 不要使用「這個事件群組」「這組新聞」作為 title。
+9. 如果新聞其實只是同一區域但不是完全同一事件，請用保守標題，避免過度推論。
+10. 只回傳 JSON，不要回傳 markdown，不要解釋。
+
+回傳格式：
+{
+  "title": "繁體中文標題",
+  "summary": "繁體中文摘要"
+}
+
+Cluster metadata:
+- Current rule-based title: ${cluster.title}
+- Current region: ${cluster.region ?? "unknown"}
+- Current category: ${cluster.category ?? "unknown"}
+- Article count: ${cluster.articles.length}
+- Sources: ${sources.join("、")}
+
+Articles:
+${articles}
+`.trim();
+}
+
+async function generateGeminiClusterText(
+  cluster: ClusterDraft
+): Promise<GeneratedClusterText> {
+  const fallback: GeneratedClusterText = {
+    title: cluster.title,
+    summary: cluster.summary,
+    source: "fallback",
+  };
+
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) return fallback;
+  if (cluster.articles.length < 2) return fallback;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+
+    const prompt = makeGeminiClusterPrompt(cluster);
+
+    const responsePromise = ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: {
+        temperature: 0.2,
+        responseMimeType: "application/json",
+      },
+    });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("Gemini request timed out"));
+      }, GEMINI_TIMEOUT_MS);
+    });
+
+    const response = await Promise.race([responsePromise, timeoutPromise]);
+    const text = response.text ?? "";
+
+    const parsed = safeParseGeminiJson(text);
+
+    const title = truncateText(parsed?.title, 80);
+    const summary = truncateText(parsed?.summary, 500);
+
+    if (!title || !summary) return fallback;
+
+    return {
+      title,
+      summary,
+      source: "gemini",
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 function updateCluster(cluster: ClusterDraft) {
@@ -2014,17 +1916,14 @@ export async function GET() {
     const generatedText = shouldUseGemini
       ? await generateGeminiClusterText(cluster)
       : {
-
-        title: cluster.title,
-        summary: cluster.summary,
-        source: "fallback" as const,
-
+          title: cluster.title,
+          summary: cluster.summary,
+          source: "fallback" as const,
         };
 
     if (generatedText.source === "gemini") {
       geminiGeneratedClusters += 1;
-
-}
+    }
 
     const latestPublishedAt =
       cluster.articles
