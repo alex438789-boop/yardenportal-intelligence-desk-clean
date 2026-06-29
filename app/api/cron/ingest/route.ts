@@ -23,6 +23,14 @@ type ScoringRule = {
   is_active: boolean;
 };
 
+type Source = {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  is_active: boolean;
+};
+
 function stripCdata(value: string) {
   return value
     .replace(/^<!\[CDATA\[/, "")
@@ -220,6 +228,65 @@ function makeEventFingerprint(title: string, summary: string | null) {
   };
 }
 
+async function cleanupInactiveSourceArticles(
+  supabase: ReturnType<typeof createSupabaseServerClient>,
+  activeSources: Source[]
+) {
+  const activeSourceNames = new Set(activeSources.map((source) => source.name));
+
+  const { data: articles, error } = await supabase
+    .from("articles")
+    .select("id,source");
+
+  if (error) {
+    return {
+      deleted: 0,
+      error: error.message,
+    };
+  }
+
+  const inactiveArticleIds =
+    articles
+      ?.filter((article) => !activeSourceNames.has(article.source))
+      .map((article) => article.id) ?? [];
+
+  if (inactiveArticleIds.length === 0) {
+    return {
+      deleted: 0,
+      error: null,
+    };
+  }
+
+  const { error: relationError } = await supabase
+    .from("cluster_articles")
+    .delete()
+    .in("article_id", inactiveArticleIds);
+
+  if (relationError) {
+    return {
+      deleted: 0,
+      error: relationError.message,
+    };
+  }
+
+  const { error: articleDeleteError } = await supabase
+    .from("articles")
+    .delete()
+    .in("id", inactiveArticleIds);
+
+  if (articleDeleteError) {
+    return {
+      deleted: 0,
+      error: articleDeleteError.message,
+    };
+  }
+
+  return {
+    deleted: inactiveArticleIds.length,
+    error: null,
+  };
+}
+
 async function pruneArticles(
   supabase: ReturnType<typeof createSupabaseServerClient>
 ) {
@@ -243,6 +310,18 @@ async function pruneArticles(
     return {
       deleted: 0,
       error: null,
+    };
+  }
+
+  const { error: relationError } = await supabase
+    .from("cluster_articles")
+    .delete()
+    .in("article_id", idsToDelete);
+
+  if (relationError) {
+    return {
+      deleted: 0,
+      error: relationError.message,
     };
   }
 
@@ -280,6 +359,13 @@ export async function GET() {
     );
   }
 
+  const activeSources = (sources ?? []) as Source[];
+
+  const cleanupResult = await cleanupInactiveSourceArticles(
+    supabase,
+    activeSources
+  );
+
   const { data: scoringRules, error: rulesError } = await supabase
     .from("scoring_rules")
     .select("label,keywords,score_delta,region,category,tags,is_active")
@@ -296,7 +382,11 @@ export async function GET() {
   let skipped = 0;
   const errors: string[] = [];
 
-  for (const source of sources ?? []) {
+  if (cleanupResult.error) {
+    errors.push(`Cleanup inactive sources: ${cleanupResult.error}`);
+  }
+
+  for (const source of activeSources) {
     try {
       const response = await fetch(source.url, {
         headers: {
@@ -377,8 +467,10 @@ export async function GET() {
     ok: true,
     upserted,
     skipped,
+    deleted_inactive_source_articles: cleanupResult.deleted,
     deleted_old_articles: pruneResult.deleted,
     max_articles: MAX_ARTICLES,
+    active_sources: activeSources.length,
     errors,
   });
 }
