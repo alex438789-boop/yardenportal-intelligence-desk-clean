@@ -382,6 +382,244 @@ const ALIAS_MAP: Record<string, string> = {
   inflation: "通膨",
   "interest rate": "利率",
   "interest rates": "利率",
+
+  // AI / semiconductor core terms
+
+  "ai": "人工智慧",
+
+  "artificial intelligence": "人工智慧",
+
+  "generative ai": "生成式AI",
+
+  "genai": "生成式AI",
+
+  "large language model": "大型語言模型",
+
+  "large language models": "大型語言模型",
+
+  "llm": "大型語言模型",
+
+  "llms": "大型語言模型",
+
+  "data center": "資料中心",
+
+  "data centers": "資料中心",
+
+  "datacenter": "資料中心",
+
+  "datacenters": "資料中心",
+
+  "gpu": "GPU",
+
+  "gpus": "GPU",
+
+  "accelerator": "AI加速器",
+
+  "accelerators": "AI加速器",
+
+  "chip": "晶片",
+
+  "chips": "晶片",
+
+  "semiconductor": "半導體",
+
+  "semiconductors": "半導體",
+
+  "advanced chip": "先進晶片",
+
+  "advanced chips": "先進晶片",
+
+  "ai chip": "AI晶片",
+
+  "ai chips": "AI晶片",
+
+  "memory chip": "記憶體晶片",
+
+  "memory chips": "記憶體晶片",
+
+  "hbm": "高頻寬記憶體",
+
+  "high bandwidth memory": "高頻寬記憶體",
+
+  "wafer": "晶圓",
+
+  "wafers": "晶圓",
+
+  "foundry": "晶圓代工",
+
+  "foundries": "晶圓代工",
+
+  "fab": "晶圓廠",
+
+  "fabs": "晶圓廠",
+
+  "lithography": "微影",
+
+  "euv": "EUV",
+
+  // Semiconductor companies
+
+  "tsmc": "台積電",
+
+  "taiwan semiconductor": "台積電",
+
+  "taiwan semiconductor manufacturing": "台積電",
+
+  "nvidia": "輝達",
+
+  "nvda": "輝達",
+
+  "amd": "超微",
+
+  "advanced micro devices": "超微",
+
+  "intel": "英特爾",
+
+  "samsung": "三星",
+
+  "samsung electronics": "三星",
+
+  "sk hynix": "SK海力士",
+
+  "sk": "SK",
+
+  "asml": "艾司摩爾",
+
+  "smic": "中芯國際",
+
+  "semiconductor manufacturing international": "中芯國際",
+
+  "huawei": "華為",
+
+  "micron": "美光",
+
+  "broadcom": "博通",
+
+  "qualcomm": "高通",
+
+  "arm": "ARM",
+
+  "softbank": "軟銀",
+
+  // AI / cloud companies
+
+  "openai": "OpenAI",
+
+  "microsoft": "微軟",
+
+  "google": "Google",
+
+  "alphabet": "Google",
+
+  "amazon": "亞馬遜",
+
+  "aws": "亞馬遜雲端",
+
+  "meta": "Meta",
+
+  "apple": "蘋果",
+
+  "oracle": "甲骨文",
+
+  "tesla": "特斯拉",
+
+  "xai": "xAI",
+
+  "anthropic": "Anthropic",
+
+  // Countries / places
+
+  "united states": "美國",
+
+  "u.s.": "美國",
+
+  "us": "美國",
+
+  "america": "美國",
+
+  "china": "中國",
+
+  "mainland china": "中國",
+
+  "beijing": "北京",
+
+  "taiwan": "台灣",
+
+  "taipei": "台北",
+
+  "south korea": "韓國",
+
+  "south korean": "韓國",
+
+  "korea": "韓國",
+
+  "seoul": "首爾",
+
+  "japan": "日本",
+
+  "tokyo": "東京",
+
+  "netherlands": "荷蘭",
+
+  "dutch": "荷蘭",
+
+  "european union": "歐盟",
+
+  "eu": "歐盟",
+
+  "brussels": "布魯塞爾",
+
+  // Policy / economic actions
+
+  "export control": "出口管制",
+
+  "export controls": "出口管制",
+
+  "technology control": "科技管制",
+
+  "technology controls": "科技管制",
+
+  "sanction": "制裁",
+
+  "sanctions": "制裁",
+
+  "tariff": "關稅",
+
+  "tariffs": "關稅",
+
+  "restriction": "限制",
+
+  "restrictions": "限制",
+
+  "ban": "禁令",
+
+  "subsidy": "補貼",
+
+  "subsidies": "補貼",
+
+  "industrial policy": "產業政策",
+
+  "supply chain": "供應鏈",
+
+  "investment": "投資",
+
+  "investment drive": "投資",
+
+  "unveil": "推出",
+
+  "launch": "推出",
+
+  "announce": "宣布",
+
+  "pledge": "承諾",
+
+  "build": "建設",
+
+  "expand": "擴張",
+
+  "seize": "查扣",
+
+  "customs seizes": "海關查扣",
 };
 
 const KNOWN_ENTITIES = [
@@ -492,6 +730,63 @@ const KNOWN_ENTITIES = [
   "東海",
   "紅海",
   "黑海",
+    "美國",
+  "中國",
+  "台灣",
+  "台北",
+  "韓國",
+  "首爾",
+  "日本",
+  "東京",
+  "荷蘭",
+  "歐盟",
+  "布魯塞爾",
+
+  "台積電",
+  "輝達",
+  "超微",
+  "英特爾",
+  "三星",
+  "SK",
+  "SK海力士",
+  "艾司摩爾",
+  "中芯國際",
+  "華為",
+  "美光",
+  "博通",
+  "高通",
+  "ARM",
+  "軟銀",
+
+  "OpenAI",
+  "微軟",
+  "Google",
+  "亞馬遜",
+  "亞馬遜雲端",
+  "Meta",
+  "蘋果",
+  "甲骨文",
+  "特斯拉",
+  "xAI",
+  "Anthropic",
+
+  "人工智慧",
+  "生成式AI",
+  "大型語言模型",
+  "資料中心",
+  "GPU",
+  "AI加速器",
+  "晶片",
+  "半導體",
+  "先進晶片",
+  "AI晶片",
+  "記憶體晶片",
+  "高頻寬記憶體",
+  "晶圓",
+  "晶圓代工",
+  "晶圓廠",
+  "微影",
+  "EUV",
 ];
 
 const ACTION_TERMS = [
@@ -547,6 +842,30 @@ const ACTION_TERMS = [
   "峰會",
   "入侵",
   "衝突",
+    "出口管制",
+  "科技管制",
+  "制裁",
+  "關稅",
+  "限制",
+  "禁令",
+  "補貼",
+  "投資",
+  "推出",
+  "宣布",
+  "承諾",
+  "建設",
+  "擴張",
+  "查扣",
+  "海關查扣",
+  "合作",
+  "聯手",
+  "供應",
+  "採購",
+  "生產",
+  "量產",
+  "研發",
+  "設廠",
+  "擴廠",
 ];
 
 const POLICY_TOPICS = [
@@ -590,6 +909,31 @@ const POLICY_TOPICS = [
   "匯率",
   "通膨",
   "利率",
+  "人工智慧",
+  "生成式AI",
+  "大型語言模型",
+  "資料中心",
+  "GPU",
+  "AI加速器",
+  "晶片",
+  "半導體",
+  "先進晶片",
+  "AI晶片",
+  "記憶體晶片",
+  "高頻寬記憶體",
+  "晶圓代工",
+  "晶圓廠",
+  "EUV",
+  "出口管制",
+  "科技管制",
+  "制裁",
+  "關稅",
+  "補貼",
+  "產業政策",
+  "供應鏈",
+  "科技供應鏈",
+  "經濟安全",
+  "AI基礎設施",
 ];
 
 function toNumber(value: number | string | null | undefined) {
