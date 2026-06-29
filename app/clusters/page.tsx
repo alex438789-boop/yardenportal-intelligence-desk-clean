@@ -316,32 +316,39 @@ function ClusterCard({
         </div>
       )}
 
-      {!compact && relatedArticles.length > 0 && (
-        <div className="mt-5 rounded-xl bg-slate-50 p-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Related Articles
-          </p>
+      {relatedArticles.length > 0 && (
+  <details className="mt-5 rounded-xl bg-slate-50 p-4">
+    <summary className="cursor-pointer select-none text-sm font-semibold text-slate-700 hover:text-slate-950">
+      Related Articles 相關新聞
+      <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-slate-200">
+        {relatedArticles.length} 篇
+      </span>
+    </summary>
 
-          <div className="space-y-2">
-            {relatedArticles.slice(0, 5).map((article) => (
-              <a
-                key={article.id}
-                href={article.url}
-                target="_blank"
-                rel="noreferrer"
-                className="block rounded-lg border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50"
-              >
-                <p className="font-medium text-slate-900">{article.title}</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {article.source} · {formatDate(article.published_at)}
-                </p>
-              </a>
-            ))}
-          </div>
-        </div>
+    <div className="mt-4 space-y-2">
+      {relatedArticles.slice(0, 8).map((article) => (
+        <a
+          key={article.id}
+          href={article.url}
+          target="_blank"
+          rel="noreferrer"
+          className="block rounded-lg border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50"
+        >
+          <p className="font-medium text-slate-900">{article.title}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {article.source} · {formatDate(article.published_at)}
+          </p>
+        </a>
+      ))}
+
+      {relatedArticles.length > 8 && (
+        <p className="pt-2 text-xs text-slate-500">
+          另有 {relatedArticles.length - 8} 篇相關新聞未顯示。
+        </p>
       )}
-    </article>
-  );
+    </div>
+  </details>
+)
 }
 
 function Section({
