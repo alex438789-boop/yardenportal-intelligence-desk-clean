@@ -1856,8 +1856,10 @@ function buildClusters(articles: Article[]) {
  * 12. API route
  * ========================================================================== */
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = createSupabaseServerClient();
+  const url = new URL(request.url);
+  const shouldGenerateAi = url.searchParams.get("ai") === "1";
 
   const { data: articles, error: articlesError } = await supabase
     .from("articles")
@@ -1910,6 +1912,7 @@ export async function GET() {
     const sources = unique(cluster.articles.map((article) => article.source));
 
     const shouldUseGemini =
+      shouldGenerateAi &&
       cluster.articles.length >= 2 &&
       geminiGeneratedClusters < MAX_GEMINI_CLUSTERS_PER_REBUILD;
 
@@ -1990,6 +1993,7 @@ export async function GET() {
     method:
       "high precision event clustering with Gemini-generated title and summary",
     gemini_enabled: Boolean(process.env.GEMINI_API_KEY),
+    ai_requested: shouldGenerateAi,
     gemini_generated_clusters: geminiGeneratedClusters,
     max_articles: MAX_ARTICLES,
     time_window_hours: TIME_WINDOW_HOURS,

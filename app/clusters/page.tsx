@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase";
 import { RebuildClustersButton } from "@/components/rebuild-clusters-button";
+import { GenerateClusterAiButton } from "@/components/generate-cluster-ai-button";
 
 export const dynamic = "force-dynamic";
 
@@ -396,6 +397,10 @@ function ClusterCard({
       <h2 className="text-lg font-bold leading-snug text-slate-950">
         {cluster.title}
       </h2>
+
+      <div className="mt-3">
+        <GenerateClusterAiButton clusterId={cluster.id} />
+      </div>
 
       <p className="mt-2 text-xs text-slate-500">
         最新更新：{formatDate(cluster.latest_published_at)}
