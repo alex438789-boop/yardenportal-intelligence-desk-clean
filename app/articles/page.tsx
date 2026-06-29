@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 import { CreateTopicButton } from "@/components/create-topic-button";
 import { RefreshArticlesButton } from "@/components/refresh-articles-button";
 import { DeleteArticleButton } from "@/components/delete-article-button";
+import { SourceBubblePool } from "@/components/source-bubble-pool";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,25 @@ export default async function ArticlesPage() {
     );
   }
 
+  const articleList = (articles ?? []) as Article[];
+
+  const sourceCounts = articleList.reduce<Record<string, number>>(
+    (acc, article) => {
+      acc[article.source] = (acc[article.source] ?? 0) + 1;
+      return acc;
+    },
+    {}
+  );
+
+  const sourceStats = Object.entries(sourceCounts)
+    .map(([source, count]) => ({
+      source,
+      count,
+      percentage:
+        articleList.length > 0 ? (count / articleList.length) * 100 : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -60,19 +80,26 @@ export default async function ArticlesPage() {
           <p className="text-sm font-medium text-slate-500">
             RSS Intelligence Feed
           </p>
+
           <h1 className="mt-2 text-3xl font-bold tracking-tight">
             最新抓取新聞
           </h1>
+
           <p className="mt-3 max-w-2xl text-slate-600">
-            這裡顯示通過 rules 篩選後的 RSS 新聞。按下重新搜尋後，系統會重新抓取 RSS、轉繁體、套用關鍵字規則、貼標籤，並保留最新 60 篇。
+            這裡顯示通過 rules 篩選後的 RSS 新聞。按下「重新搜尋＋重建 Clusters」後，系統會重新抓取 RSS、轉繁體、套用關鍵字規則、貼標籤，並同步重建事件群組。下方的來源球池會顯示目前新聞池共有 {articleList.length} 篇文章，以及各來源的文章占比。
           </p>
         </div>
 
         <RefreshArticlesButton />
       </div>
 
+      <SourceBubblePool
+        stats={sourceStats}
+        totalArticles={articleList.length}
+      />
+
       <div className="grid gap-4">
-        {(articles ?? []).map((article: Article) => (
+        {articleList.map((article: Article) => (
           <article
             key={article.id}
             className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
@@ -81,6 +108,7 @@ export default async function ArticlesPage() {
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
                 {article.source}
               </span>
+
               <time className="text-xs text-slate-500">
                 {formatDate(article.published_at)}
               </time>
@@ -146,9 +174,9 @@ export default async function ArticlesPage() {
         ))}
       </div>
 
-      {articles?.length === 0 && (
+      {articleList.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
-          目前還沒有 articles。請按上方「重新搜尋」抓取 RSS。
+          目前還沒有 articles。請按上方「重新搜尋＋重建 Clusters」抓取 RSS。
         </div>
       )}
     </main>
