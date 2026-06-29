@@ -78,27 +78,80 @@ function isCrisisGroupBriefTitle(title: string) {
   );
 }
 
-function cleanSummaryText(value: string | null | undefined) {
-  if (!value) return "";
+function decodeHtmlEntities(value: string) {
 
   return value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/g, " ")
+
+    .replace(/&lt;/g, "<")
+
+    .replace(/&gt;/g, ">")
+
     .replace(/&amp;/g, "&")
+
+    .replace(/&nbsp;/g, " ")
+
     .replace(/&quot;/g, '"')
+
     .replace(/&#39;/g, "'")
+
+    .replace(/&apos;/g, "'");
+
+}
+
+function cleanSummaryText(value: string | null | undefined) {
+
+  if (!value) return "";
+
+  const decoded = decodeHtmlEntities(value);
+
+  return decoded
+
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+
+    .replace(/<[^>]*>/g, " ")
+
     .replace(/\s+/g, " ")
+
     .trim();
+
 }
 
 function firstReadableSentence(value: string | null | undefined) {
+
   const clean = cleanSummaryText(value);
 
   if (!clean) return "";
 
-  const sentence = clean.split(/(?<=[.!?。！？])\s+/)[0] ?? clean;
+  const withoutCrisisWatchHeader = clean
 
-  return sentence.length > 180 ? `${sentence.slice(0, 180)}...` : sentence;
+    .replace(
+
+      /^[A-Za-z\s.'()/-]+ \d{1,2} [A-Z][a-z]+ \d{4} #\d+\s*/i,
+
+      ""
+
+    )
+
+    .replace(
+
+      /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s*\d{1,2}\/\d{1,2}\/\d{4}\s*-\s*\d{1,2}:\d{2}\s*/i,
+
+      ""
+
+    )
+
+    .replace(/^\d{1,2} [A-Z][a-z]+ \d{4}\s*/i, "")
+
+    .trim();
+
+  const readable = withoutCrisisWatchHeader || clean;
+
+  const sentence = readable.split(/(?<=[.!?。！？])\s+/)[0] ?? readable;
+
+  return sentence.length > 220 ? `${sentence.slice(0, 220)}...` : sentence;
+
 }
 
 function getArticleDisplayTitle(article: RelatedArticle) {
