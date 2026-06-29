@@ -124,16 +124,43 @@ function removeCrisisWatchMetadata(value: string) {
 }
 
 function firstReadableSentence(value: string | null | undefined) {
+
   const clean = cleanSummaryText(value);
 
   if (!clean) return "";
 
   const withoutMetadata = removeCrisisWatchMetadata(clean);
+
   const readable = withoutMetadata || clean;
 
-  const sentence = readable.split(/(?<=[.!?。！？])\s+/)[0] ?? readable;
+  const protectedText = readable
 
-  return sentence.length > 240 ? `${sentence.slice(0, 240)}...` : sentence;
+    .replace(/\bU\.S\./g, "US_ABBR")
+
+    .replace(/\bU\.K\./g, "UK_ABBR")
+
+    .replace(/\bU\.N\./g, "UN_ABBR")
+
+    .replace(/\bE\.U\./g, "EU_ABBR")
+
+    .replace(/\bI\.A\.E\.A\./g, "IAEA_ABBR");
+
+  const sentence = protectedText.split(/(?<=[.!?。！？])\s+/)[0] ?? protectedText;
+
+  const restored = sentence
+
+    .replace(/US_ABBR/g, "U.S.")
+
+    .replace(/UK_ABBR/g, "U.K.")
+
+    .replace(/UN_ABBR/g, "U.N.")
+
+    .replace(/EU_ABBR/g, "E.U.")
+
+    .replace(/IAEA_ABBR/g, "I.A.E.A.");
+
+  return restored.length > 240 ? `${restored.slice(0, 240)}...` : restored;
+
 }
 
 function getArticleDisplayTitle(article: RelatedArticle) {
