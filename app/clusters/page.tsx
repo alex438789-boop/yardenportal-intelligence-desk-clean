@@ -118,6 +118,67 @@ function cleanSummaryText(value: string | null | undefined) {
 
 }
 
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+}
+
+function cleanSummaryText(value: string | null | undefined) {
+  if (!value) return "";
+
+  const decoded = decodeHtmlEntities(value);
+
+  return decoded
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function removeCrisisWatchMetadata(value: string) {
+  return value
+    .replace(/\blalasor\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(
+      /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s*\d{2}\/\d{2}\/\d{4}\s*-\s*\d{1,2}:\d{2}\s*/i,
+      ""
+    )
+    .replace(
+      /^[A-Za-z\s.'()/-]+?\s+(Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s*\d{2}\/\d{2}\/\d{4}\s*-\s*\d{1,2}:\d{2}\s*/i,
+      ""
+    )
+    .replace(
+      /^[A-Za-z\s.'()/-]+?\s+\d{1,2}\s+[A-Z][a-z]+\s+20\d{2}\s+#\d+\s*/i,
+      ""
+    )
+    .replace(
+      /^.*?\b\d{1,2}\s+[A-Z][a-z]+\s+20\d{2}\s+/i,
+      ""
+    )
+    .trim();
+}
+
+function firstReadableSentence(value: string | null | undefined) {
+  const clean = cleanSummaryText(value);
+
+  if (!clean) return "";
+
+  const withoutMetadata = removeCrisisWatchMetadata(clean);
+  const readable = withoutMetadata || clean;
+
+  const sentence = readable.split(/(?<=[.!?。！？])\s+/)[0] ?? readable;
+
+  return sentence.length > 240 ? `${sentence.slice(0, 240)}...` : sentence;
+}
+
+
 function firstReadableSentence(value: string | null | undefined) {
 
   const clean = cleanSummaryText(value);
