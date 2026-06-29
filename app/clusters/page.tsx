@@ -348,8 +348,7 @@ function ClusterCard({
       )}
     </div>
   </details>
-)
-}
+)}
 
 function Section({
   id,
