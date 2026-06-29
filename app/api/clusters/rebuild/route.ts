@@ -3,6 +3,10 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+/* ============================================================================
+ * 1. Types
+ * ========================================================================== */
+
 type Article = {
   id: string;
   title: string;
@@ -39,8 +43,16 @@ type ClusterDraft = {
   articles: Article[];
 };
 
+/* ============================================================================
+ * 2. Core settings
+ * ========================================================================== */
+
 const MAX_ARTICLES = 100;
 const TIME_WINDOW_HOURS = 72;
+
+/* ============================================================================
+ * 3. Generic filters
+ * ========================================================================== */
 
 const BROAD_CLUSTER_TERMS = new Set([
   "美中競爭",
@@ -132,497 +144,382 @@ const STOP_WORDS = new Set([
   "why",
 ]);
 
-const ALIAS_MAP: Record<string, string> = {
-  "donald trump": "川普",
-  trump: "川普",
-  "jd vance": "范斯",
-  "j.d. vance": "范斯",
-  vance: "范斯",
-  "joe biden": "拜登",
-  biden: "拜登",
-  "xi jinping": "習近平",
-  xi: "習近平",
-  "lai ching-te": "賴清德",
-  "lai ching te": "賴清德",
-  "william lai": "賴清德",
-  "han kuo-yu": "韓國瑜",
-  "han kuo yu": "韓國瑜",
-  "ko wen-je": "柯文哲",
-  "ko wen je": "柯文哲",
-  "huang kuo-chang": "黃國昌",
-  "huang kuo chang": "黃國昌",
-  "ma ying-jeou": "馬英九",
-  "ma ying jeou": "馬英九",
-  "vladimir putin": "普丁",
-  putin: "普丁",
-  "volodymyr zelenskyy": "澤倫斯基",
-  zelenskyy: "澤倫斯基",
-  zelensky: "澤倫斯基",
-  "benjamin netanyahu": "內塔尼亞胡",
-  netanyahu: "內塔尼亞胡",
-  "ali khamenei": "哈梅內伊",
-  khamenei: "哈梅內伊",
-  "emmanuel macron": "馬克宏",
-  macron: "馬克宏",
+/* ============================================================================
+ * 4. Alias taxonomy
+ *
+ * 用 tuple entries 建立 ALIAS_MAP，避免 object literal 重複 key 造成 build error。
+ * 後面重複出現的 alias 會覆蓋前面的 canonical value，但不會讓 TypeScript 報錯。
+ * ========================================================================== */
 
-  "white house": "白宮",
-  "state department": "國務院",
-  "u.s. state department": "國務院",
-  "us state department": "國務院",
-  pentagon: "五角大廈",
-  "u.s. congress": "美國國會",
-  "us congress": "美國國會",
-  congress: "美國國會",
-  senate: "美國參議院",
-  "house of representatives": "美國眾議院",
-  "federal reserve": "聯準會",
-  fed: "聯準會",
-  "treasury department": "美國財政部",
-  "department of defense": "美國國防部",
-  "ministry of national defense": "國防部",
-  "mainland affairs council": "陸委會",
-  "legislative yuan": "立法院",
-  "executive yuan": "行政院",
-  "presidential office": "總統府",
-  "kuomintang": "國民黨",
-  kmt: "國民黨",
-  dpp: "民進黨",
-  "democratic progressive party": "民進黨",
-  tpp: "民眾黨",
-  "taiwan people's party": "民眾黨",
+const PERSON_ALIASES: [string, string][] = [
+  ["donald trump", "川普"],
+  ["trump", "川普"],
+  ["jd vance", "范斯"],
+  ["j.d. vance", "范斯"],
+  ["vance", "范斯"],
+  ["joe biden", "拜登"],
+  ["biden", "拜登"],
+  ["xi jinping", "習近平"],
+  ["xi", "習近平"],
+  ["lai ching-te", "賴清德"],
+  ["lai ching te", "賴清德"],
+  ["william lai", "賴清德"],
+  ["han kuo-yu", "韓國瑜"],
+  ["han kuo yu", "韓國瑜"],
+  ["ko wen-je", "柯文哲"],
+  ["ko wen je", "柯文哲"],
+  ["huang kuo-chang", "黃國昌"],
+  ["huang kuo chang", "黃國昌"],
+  ["ma ying-jeou", "馬英九"],
+  ["ma ying jeou", "馬英九"],
+  ["vladimir putin", "普丁"],
+  ["putin", "普丁"],
+  ["volodymyr zelenskyy", "澤倫斯基"],
+  ["zelenskyy", "澤倫斯基"],
+  ["zelensky", "澤倫斯基"],
+  ["benjamin netanyahu", "內塔尼亞胡"],
+  ["netanyahu", "內塔尼亞胡"],
+  ["ali khamenei", "哈梅內伊"],
+  ["khamenei", "哈梅內伊"],
+  ["emmanuel macron", "馬克宏"],
+  ["macron", "馬克宏"],
+];
 
-  nato: "北約",
-  "north atlantic treaty organization": "北約",
-  eu: "歐盟",
-  "european union": "歐盟",
-  "european parliament": "歐洲議會",
-  un: "聯合國",
-  "united nations": "聯合國",
-  "security council": "安理會",
-  wto: "世貿組織",
-  who: "WHO",
-  imf: "IMF",
-  "world bank": "世界銀行",
-  icj: "國際法院",
-  icc: "國際刑事法院",
+const GOVERNMENT_AND_ORG_ALIASES: [string, string][] = [
+  ["white house", "白宮"],
+  ["state department", "國務院"],
+  ["u.s. state department", "國務院"],
+  ["us state department", "國務院"],
+  ["pentagon", "五角大廈"],
+  ["u.s. congress", "美國國會"],
+  ["us congress", "美國國會"],
+  ["congress", "美國國會"],
+  ["senate", "美國參議院"],
+  ["house of representatives", "美國眾議院"],
+  ["federal reserve", "聯準會"],
+  ["fed", "聯準會"],
+  ["treasury department", "美國財政部"],
+  ["department of defense", "美國國防部"],
+  ["ministry of national defense", "國防部"],
+  ["mainland affairs council", "陸委會"],
+  ["legislative yuan", "立法院"],
+  ["executive yuan", "行政院"],
+  ["presidential office", "總統府"],
+  ["kuomintang", "國民黨"],
+  ["kmt", "國民黨"],
+  ["democratic progressive party", "民進黨"],
+  ["dpp", "民進黨"],
+  ["taiwan people's party", "民眾黨"],
+  ["tpp", "民眾黨"],
+  ["nato", "北約"],
+  ["north atlantic treaty organization", "北約"],
+  ["european union", "歐盟"],
+  ["eu", "歐盟"],
+  ["european parliament", "歐洲議會"],
+  ["united nations", "聯合國"],
+  ["un", "聯合國"],
+  ["security council", "安理會"],
+  ["world trade organization", "世貿組織"],
+  ["wto", "世貿組織"],
+  ["who", "WHO"],
+  ["imf", "IMF"],
+  ["world bank", "世界銀行"],
+  ["international court of justice", "國際法院"],
+  ["icj", "國際法院"],
+  ["international criminal court", "國際刑事法院"],
+  ["icc", "國際刑事法院"],
+];
 
-  china: "中國",
-  "people's republic of china": "中國",
-  prc: "中國",
-  taiwan: "臺灣",
-  "republic of china": "中華民國",
-  roc: "中華民國",
-  "united states": "美國",
-  "u.s.": "美國",
-  "us": "美國",
-  america: "美國",
-  japan: "日本",
-  "south korea": "南韓",
-  korea: "南韓",
-  "north korea": "北韓",
-  philippines: "菲律賓",
-  vietnam: "越南",
-  india: "印度",
-  indonesia: "印尼",
-  myanmar: "緬甸",
-  thailand: "泰國",
-  singapore: "新加坡",
-  australia: "澳洲",
-  uk: "英國",
-  britain: "英國",
-  france: "法國",
-  germany: "德國",
-  italy: "義大利",
-  turkey: "土耳其",
-  türkiye: "土耳其",
-  iran: "伊朗",
-  israel: "以色列",
-  gaza: "加薩",
-  hamas: "哈瑪斯",
-  hezbollah: "真主黨",
-  houthis: "胡塞",
-  ukraine: "烏克蘭",
-  russia: "俄羅斯",
-  qatar: "卡達",
-  "saudi arabia": "沙烏地",
+const COUNTRY_AND_PLACE_ALIASES: [string, string][] = [
+  ["china", "中國"],
+  ["people's republic of china", "中國"],
+  ["mainland china", "中國"],
+  ["prc", "中國"],
+  ["beijing", "北京"],
+  ["taiwan", "台灣"],
+  ["taipei", "台北"],
+  ["republic of china", "中華民國"],
+  ["roc", "中華民國"],
+  ["united states", "美國"],
+  ["u.s.", "美國"],
+  ["us", "美國"],
+  ["america", "美國"],
+  ["japan", "日本"],
+  ["tokyo", "東京"],
+  ["south korea", "韓國"],
+  ["south korean", "韓國"],
+  ["korea", "韓國"],
+  ["seoul", "首爾"],
+  ["north korea", "北韓"],
+  ["philippines", "菲律賓"],
+  ["vietnam", "越南"],
+  ["india", "印度"],
+  ["indonesia", "印尼"],
+  ["myanmar", "緬甸"],
+  ["thailand", "泰國"],
+  ["singapore", "新加坡"],
+  ["australia", "澳洲"],
+  ["uk", "英國"],
+  ["britain", "英國"],
+  ["france", "法國"],
+  ["germany", "德國"],
+  ["italy", "義大利"],
+  ["turkey", "土耳其"],
+  ["türkiye", "土耳其"],
+  ["iran", "伊朗"],
+  ["israel", "以色列"],
+  ["gaza", "加薩"],
+  ["hamas", "哈瑪斯"],
+  ["hezbollah", "真主黨"],
+  ["houthis", "胡塞"],
+  ["ukraine", "烏克蘭"],
+  ["russia", "俄羅斯"],
+  ["qatar", "卡達"],
+  ["saudi arabia", "沙烏地"],
+  ["netherlands", "荷蘭"],
+  ["dutch", "荷蘭"],
+  ["brussels", "布魯塞爾"],
+  ["taiwan strait", "台海"],
+  ["south china sea", "南海"],
+  ["east china sea", "東海"],
+  ["red sea", "紅海"],
+  ["black sea", "黑海"],
+];
 
-  tsmc: "台積電",
-  nvidia: "輝達",
-  asml: "ASML",
-  openai: "OpenAI",
-  google: "Google",
-  microsoft: "Microsoft",
-  apple: "Apple",
-  tesla: "Tesla",
+const SEMICONDUCTOR_AND_AI_ALIASES: [string, string][] = [
+  // Core AI terms
+  ["ai", "人工智慧"],
+  ["artificial intelligence", "人工智慧"],
+  ["generative ai", "生成式AI"],
+  ["genai", "生成式AI"],
+  ["large language model", "大型語言模型"],
+  ["large language models", "大型語言模型"],
+  ["llm", "大型語言模型"],
+  ["llms", "大型語言模型"],
+  ["data center", "資料中心"],
+  ["data centers", "資料中心"],
+  ["datacenter", "資料中心"],
+  ["datacenters", "資料中心"],
+  ["gpu", "GPU"],
+  ["gpus", "GPU"],
+  ["accelerator", "AI加速器"],
+  ["accelerators", "AI加速器"],
 
-  "taiwan strait": "臺海",
-  "south china sea": "南海",
-  "east china sea": "東海",
-  "red sea": "紅海",
-  "black sea": "黑海",
-
-  visit: "訪問",
-  visits: "訪問",
-  visited: "訪問",
-  visiting: "訪問",
-  delegation: "訪團",
-  "congressional delegation": "國會訪團",
-  meet: "會晤",
-  meets: "會晤",
-  met: "會晤",
-  meeting: "會晤",
-  talk: "會談",
-  talks: "會談",
-  call: "通話",
-  calls: "通話",
-  announce: "宣布",
-  announces: "宣布",
-  announced: "宣布",
-  warning: "警告",
-  warn: "警告",
-  warns: "警告",
-  warned: "警告",
-  condemn: "譴責",
-  condemns: "譴責",
-  condemned: "譴責",
-  sanction: "制裁",
-  sanctions: "制裁",
-  sanctioned: "制裁",
-  tariff: "關稅",
-  tariffs: "關稅",
-  "export control": "出口管制",
-  "export controls": "出口管制",
-  ceasefire: "停火",
-  "cease-fire": "停火",
-  attack: "攻擊",
-  attacks: "攻擊",
-  attacked: "攻擊",
-  strike: "攻擊",
-  strikes: "攻擊",
-  struck: "攻擊",
-  airstrike: "空襲",
-  airstrikes: "空襲",
-  bombing: "轟炸",
-  blockade: "封鎖",
-  deploy: "部署",
-  deploys: "部署",
-  deployed: "部署",
-  deployment: "部署",
-  exercise: "軍演",
-  exercises: "軍演",
-  drill: "軍演",
-  drills: "軍演",
-  patrol: "巡邏",
-  patrols: "巡邏",
-  launch: "發射",
-  launches: "發射",
-  launched: "發射",
-  pass: "通過",
-  passes: "通過",
-  passed: "通過",
-  vote: "表決",
-  votes: "表決",
-  voted: "表決",
-  reject: "否決",
-  rejects: "否決",
-  rejected: "否決",
-  investigate: "調查",
-  investigates: "調查",
-  investigated: "調查",
-  arrest: "逮捕",
-  arrests: "逮捕",
-  arrested: "逮捕",
-  election: "選舉",
-  elections: "選舉",
-  recall: "罷免",
-  protest: "抗議",
-  protests: "抗議",
-  summit: "峰會",
-
-  semiconductor: "半導體",
-  semiconductors: "半導體",
-  chip: "晶片",
-  chips: "晶片",
-  "ai chip": "AI晶片",
-  "ai chips": "AI晶片",
-  "artificial intelligence": "人工智慧",
-  "rare earth": "稀土",
-  "rare earths": "稀土",
-  "critical minerals": "關鍵礦物",
-  "supply chain": "供應鏈",
-  "supply chains": "供應鏈",
-  energy: "能源",
-  "natural gas": "天然氣",
-  oil: "石油",
-  nuclear: "核電",
-  "renewable energy": "再生能源",
-  "defense spending": "軍費",
-  "defence spending": "軍費",
-  "defense budget": "國防預算",
-  "defence budget": "國防預算",
-  missile: "飛彈",
-  missiles: "飛彈",
-  drone: "無人機",
-  drones: "無人機",
-  warship: "軍艦",
-  warships: "軍艦",
-  aircraft: "軍機",
-  carrier: "航母",
-  submarine: "潛艦",
-  cybersecurity: "網路安全",
-  "cyber security": "網路安全",
-  disinformation: "假訊息",
-  "digital sovereignty": "數位主權",
-  immigration: "移民",
-  refugee: "難民",
-  refugees: "難民",
-  border: "邊境",
-  trade: "貿易",
-  investment: "投資",
-  inflation: "通膨",
-  "interest rate": "利率",
-  "interest rates": "利率",
-
-  // AI / semiconductor core terms
-
-  "ai": "人工智慧",
-
-  "artificial intelligence": "人工智慧",
-
-  "generative ai": "生成式AI",
-
-  "genai": "生成式AI",
-
-  "large language model": "大型語言模型",
-
-  "large language models": "大型語言模型",
-
-  "llm": "大型語言模型",
-
-  "llms": "大型語言模型",
-
-  "data center": "資料中心",
-
-  "data centers": "資料中心",
-
-  "datacenter": "資料中心",
-
-  "datacenters": "資料中心",
-
-  "gpu": "GPU",
-
-  "gpus": "GPU",
-
-  "accelerator": "AI加速器",
-
-  "accelerators": "AI加速器",
-
-  "chip": "晶片",
-
-  "chips": "晶片",
-
-  "semiconductor": "半導體",
-
-  "semiconductors": "半導體",
-
-  "advanced chip": "先進晶片",
-
-  "advanced chips": "先進晶片",
-
-  "ai chip": "AI晶片",
-
-  "ai chips": "AI晶片",
-
-  "memory chip": "記憶體晶片",
-
-  "memory chips": "記憶體晶片",
-
-  "hbm": "高頻寬記憶體",
-
-  "high bandwidth memory": "高頻寬記憶體",
-
-  "wafer": "晶圓",
-
-  "wafers": "晶圓",
-
-  "foundry": "晶圓代工",
-
-  "foundries": "晶圓代工",
-
-  "fab": "晶圓廠",
-
-  "fabs": "晶圓廠",
-
-  "lithography": "微影",
-
-  "euv": "EUV",
+  // Semiconductor terms
+  ["semiconductor", "半導體"],
+  ["semiconductors", "半導體"],
+  ["chip", "晶片"],
+  ["chips", "晶片"],
+  ["advanced chip", "先進晶片"],
+  ["advanced chips", "先進晶片"],
+  ["ai chip", "AI晶片"],
+  ["ai chips", "AI晶片"],
+  ["memory chip", "記憶體晶片"],
+  ["memory chips", "記憶體晶片"],
+  ["hbm", "高頻寬記憶體"],
+  ["high bandwidth memory", "高頻寬記憶體"],
+  ["wafer", "晶圓"],
+  ["wafers", "晶圓"],
+  ["foundry", "晶圓代工"],
+  ["foundries", "晶圓代工"],
+  ["fab", "晶圓廠"],
+  ["fabs", "晶圓廠"],
+  ["lithography", "微影"],
+  ["euv", "EUV"],
 
   // Semiconductor companies
-
-  "tsmc": "台積電",
-
-  "taiwan semiconductor": "台積電",
-
-  "taiwan semiconductor manufacturing": "台積電",
-
-  "nvidia": "輝達",
-
-  "nvda": "輝達",
-
-  "amd": "超微",
-
-  "advanced micro devices": "超微",
-
-  "intel": "英特爾",
-
-  "samsung": "三星",
-
-  "samsung electronics": "三星",
-
-  "sk hynix": "SK海力士",
-
-  "sk": "SK",
-
-  "asml": "艾司摩爾",
-
-  "smic": "中芯國際",
-
-  "semiconductor manufacturing international": "中芯國際",
-
-  "huawei": "華為",
-
-  "micron": "美光",
-
-  "broadcom": "博通",
-
-  "qualcomm": "高通",
-
-  "arm": "ARM",
-
-  "softbank": "軟銀",
+  ["tsmc", "台積電"],
+  ["taiwan semiconductor", "台積電"],
+  ["taiwan semiconductor manufacturing", "台積電"],
+  ["nvidia", "輝達"],
+  ["nvda", "輝達"],
+  ["amd", "超微"],
+  ["advanced micro devices", "超微"],
+  ["intel", "英特爾"],
+  ["samsung", "三星"],
+  ["samsung electronics", "三星"],
+  ["sk hynix", "SK海力士"],
+  ["sk", "SK"],
+  ["asml", "艾司摩爾"],
+  ["smic", "中芯國際"],
+  ["semiconductor manufacturing international", "中芯國際"],
+  ["huawei", "華為"],
+  ["micron", "美光"],
+  ["broadcom", "博通"],
+  ["qualcomm", "高通"],
+  ["arm", "ARM"],
+  ["softbank", "軟銀"],
 
   // AI / cloud companies
+  ["openai", "OpenAI"],
+  ["microsoft", "微軟"],
+  ["google", "Google"],
+  ["alphabet", "Google"],
+  ["amazon", "亞馬遜"],
+  ["aws", "亞馬遜雲端"],
+  ["meta", "Meta"],
+  ["apple", "蘋果"],
+  ["oracle", "甲骨文"],
+  ["tesla", "特斯拉"],
+  ["xai", "xAI"],
+  ["anthropic", "Anthropic"],
+];
 
-  "openai": "OpenAI",
+const ACTION_ALIASES: [string, string][] = [
+  ["visit", "訪問"],
+  ["visits", "訪問"],
+  ["visited", "訪問"],
+  ["visiting", "訪問"],
+  ["delegation", "訪團"],
+  ["congressional delegation", "國會訪團"],
+  ["meet", "會晤"],
+  ["meets", "會晤"],
+  ["met", "會晤"],
+  ["meeting", "會晤"],
+  ["talk", "會談"],
+  ["talks", "會談"],
+  ["call", "通話"],
+  ["calls", "通話"],
+  ["announce", "宣布"],
+  ["announces", "宣布"],
+  ["announced", "宣布"],
+  ["unveil", "推出"],
+  ["launch", "推出"],
+  ["pledge", "承諾"],
+  ["build", "建設"],
+  ["expand", "擴張"],
+  ["warning", "警告"],
+  ["warn", "警告"],
+  ["warns", "警告"],
+  ["warned", "警告"],
+  ["condemn", "譴責"],
+  ["condemns", "譴責"],
+  ["condemned", "譴責"],
+  ["sanction", "制裁"],
+  ["sanctions", "制裁"],
+  ["sanctioned", "制裁"],
+  ["tariff", "關稅"],
+  ["tariffs", "關稅"],
+  ["restriction", "限制"],
+  ["restrictions", "限制"],
+  ["ban", "禁令"],
+  ["subsidy", "補貼"],
+  ["subsidies", "補貼"],
+  ["export control", "出口管制"],
+  ["export controls", "出口管制"],
+  ["technology control", "科技管制"],
+  ["technology controls", "科技管制"],
+  ["industrial policy", "產業政策"],
+  ["supply chain", "供應鏈"],
+  ["investment", "投資"],
+  ["investment drive", "投資"],
+  ["ceasefire", "停火"],
+  ["cease-fire", "停火"],
+  ["attack", "攻擊"],
+  ["attacks", "攻擊"],
+  ["attacked", "攻擊"],
+  ["strike", "攻擊"],
+  ["strikes", "攻擊"],
+  ["struck", "攻擊"],
+  ["airstrike", "空襲"],
+  ["airstrikes", "空襲"],
+  ["bombing", "轟炸"],
+  ["blockade", "封鎖"],
+  ["deploy", "部署"],
+  ["deploys", "部署"],
+  ["deployed", "部署"],
+  ["deployment", "部署"],
+  ["exercise", "軍演"],
+  ["exercises", "軍演"],
+  ["drill", "軍演"],
+  ["drills", "軍演"],
+  ["patrol", "巡邏"],
+  ["patrols", "巡邏"],
+  ["launches", "發射"],
+  ["launched", "發射"],
+  ["pass", "通過"],
+  ["passes", "通過"],
+  ["passed", "通過"],
+  ["vote", "表決"],
+  ["votes", "表決"],
+  ["voted", "表決"],
+  ["reject", "否決"],
+  ["rejects", "否決"],
+  ["rejected", "否決"],
+  ["investigate", "調查"],
+  ["investigates", "調查"],
+  ["investigated", "調查"],
+  ["arrest", "逮捕"],
+  ["arrests", "逮捕"],
+  ["arrested", "逮捕"],
+  ["election", "選舉"],
+  ["elections", "選舉"],
+  ["recall", "罷免"],
+  ["protest", "抗議"],
+  ["protests", "抗議"],
+  ["summit", "峰會"],
+  ["seize", "查扣"],
+  ["customs seizes", "海關查扣"],
+];
 
-  "microsoft": "微軟",
+const RESOURCE_AND_POLICY_ALIASES: [string, string][] = [
+  ["rare earth", "稀土"],
+  ["rare earths", "稀土"],
+  ["critical minerals", "關鍵礦物"],
+  ["energy", "能源"],
+  ["natural gas", "天然氣"],
+  ["oil", "石油"],
+  ["nuclear", "核電"],
+  ["renewable energy", "再生能源"],
+  ["defense spending", "軍費"],
+  ["defence spending", "軍費"],
+  ["defense budget", "國防預算"],
+  ["defence budget", "國防預算"],
+  ["missile", "飛彈"],
+  ["missiles", "飛彈"],
+  ["drone", "無人機"],
+  ["drones", "無人機"],
+  ["warship", "軍艦"],
+  ["warships", "軍艦"],
+  ["aircraft", "軍機"],
+  ["carrier", "航母"],
+  ["submarine", "潛艦"],
+  ["cybersecurity", "網路安全"],
+  ["cyber security", "網路安全"],
+  ["disinformation", "假訊息"],
+  ["digital sovereignty", "數位主權"],
+  ["immigration", "移民"],
+  ["refugee", "難民"],
+  ["refugees", "難民"],
+  ["border", "邊境"],
+  ["trade", "貿易"],
+  ["inflation", "通膨"],
+  ["interest rate", "利率"],
+  ["interest rates", "利率"],
+];
 
-  "google": "Google",
+const ALIAS_ENTRIES: [string, string][] = [
+  ...PERSON_ALIASES,
+  ...GOVERNMENT_AND_ORG_ALIASES,
+  ...COUNTRY_AND_PLACE_ALIASES,
+  ...SEMICONDUCTOR_AND_AI_ALIASES,
+  ...ACTION_ALIASES,
+  ...RESOURCE_AND_POLICY_ALIASES,
+];
 
-  "alphabet": "Google",
+const ALIAS_MAP: Record<string, string> = Object.fromEntries(
+  ALIAS_ENTRIES.map(([alias, canonical]) => [
+    alias.trim().toLowerCase(),
+    canonical,
+  ])
+);
 
-  "amazon": "亞馬遜",
-
-  "aws": "亞馬遜雲端",
-
-  "meta": "Meta",
-
-  "apple": "蘋果",
-
-  "oracle": "甲骨文",
-
-  "tesla": "特斯拉",
-
-  "xai": "xAI",
-
-  "anthropic": "Anthropic",
-
-  // Countries / places
-
-  "united states": "美國",
-
-  "u.s.": "美國",
-
-  "us": "美國",
-
-  "america": "美國",
-
-  "china": "中國",
-
-  "mainland china": "中國",
-
-  "beijing": "北京",
-
-  "taiwan": "台灣",
-
-  "taipei": "台北",
-
-  "south korea": "韓國",
-
-  "south korean": "韓國",
-
-  "korea": "韓國",
-
-  "seoul": "首爾",
-
-  "japan": "日本",
-
-  "tokyo": "東京",
-
-  "netherlands": "荷蘭",
-
-  "dutch": "荷蘭",
-
-  "european union": "歐盟",
-
-  "eu": "歐盟",
-
-  "brussels": "布魯塞爾",
-
-  // Policy / economic actions
-
-  "export control": "出口管制",
-
-  "export controls": "出口管制",
-
-  "technology control": "科技管制",
-
-  "technology controls": "科技管制",
-
-  "sanction": "制裁",
-
-  "sanctions": "制裁",
-
-  "tariff": "關稅",
-
-  "tariffs": "關稅",
-
-  "restriction": "限制",
-
-  "restrictions": "限制",
-
-  "ban": "禁令",
-
-  "subsidy": "補貼",
-
-  "subsidies": "補貼",
-
-  "industrial policy": "產業政策",
-
-  "supply chain": "供應鏈",
-
-  "investment": "投資",
-
-  "investment drive": "投資",
-
-  "unveil": "推出",
-
-  "launch": "推出",
-
-  "announce": "宣布",
-
-  "pledge": "承諾",
-
-  "build": "建設",
-
-  "expand": "擴張",
-
-  "seize": "查扣",
-
-  "customs seizes": "海關查扣",
-};
+/* ============================================================================
+ * 5. Signal dictionaries
+ * ========================================================================== */
 
 const KNOWN_ENTITIES = [
+  // People
   "川普",
   "拜登",
   "范斯",
@@ -651,6 +548,8 @@ const KNOWN_ENTITIES = [
   "馬克宏",
   "梅洛尼",
   "馮德萊恩",
+
+  // Governments / institutions
   "美國國會",
   "美國參議院",
   "美國眾議院",
@@ -685,27 +584,17 @@ const KNOWN_ENTITIES = [
   "WHO",
   "IMF",
   "世界銀行",
-  "台積電",
-  "輝達",
-  "Nvidia",
-  "ASML",
-  "OpenAI",
-  "Google",
-  "Microsoft",
-  "Apple",
-  "Tesla",
-  "伊朗",
-  "以色列",
-  "加薩",
-  "哈瑪斯",
-  "真主黨",
-  "胡塞",
-  "烏克蘭",
-  "俄羅斯",
+
+  // Countries / regions
   "中國",
   "美國",
+  "台灣",
+  "台北",
+  "北京",
   "日本",
-  "南韓",
+  "東京",
+  "韓國",
+  "首爾",
   "北韓",
   "菲律賓",
   "越南",
@@ -722,6 +611,8 @@ const KNOWN_ENTITIES = [
   "土耳其",
   "沙烏地",
   "卡達",
+  "荷蘭",
+  "布魯塞爾",
   "金門",
   "馬祖",
   "台海",
@@ -730,18 +621,16 @@ const KNOWN_ENTITIES = [
   "東海",
   "紅海",
   "黑海",
-    "美國",
-  "中國",
-  "台灣",
-  "台北",
-  "韓國",
-  "首爾",
-  "日本",
-  "東京",
-  "荷蘭",
-  "歐盟",
-  "布魯塞爾",
+  "伊朗",
+  "以色列",
+  "加薩",
+  "哈瑪斯",
+  "真主黨",
+  "胡塞",
+  "烏克蘭",
+  "俄羅斯",
 
+  // Semiconductor / AI companies
   "台積電",
   "輝達",
   "超微",
@@ -750,6 +639,7 @@ const KNOWN_ENTITIES = [
   "SK",
   "SK海力士",
   "艾司摩爾",
+  "ASML",
   "中芯國際",
   "華為",
   "美光",
@@ -757,7 +647,6 @@ const KNOWN_ENTITIES = [
   "高通",
   "ARM",
   "軟銀",
-
   "OpenAI",
   "微軟",
   "Google",
@@ -769,27 +658,10 @@ const KNOWN_ENTITIES = [
   "特斯拉",
   "xAI",
   "Anthropic",
-
-  "人工智慧",
-  "生成式AI",
-  "大型語言模型",
-  "資料中心",
-  "GPU",
-  "AI加速器",
-  "晶片",
-  "半導體",
-  "先進晶片",
-  "AI晶片",
-  "記憶體晶片",
-  "高頻寬記憶體",
-  "晶圓",
-  "晶圓代工",
-  "晶圓廠",
-  "微影",
-  "EUV",
 ];
 
 const ACTION_TERMS = [
+  // Diplomacy / politics
   "訪問",
   "訪台",
   "訪美",
@@ -801,29 +673,11 @@ const ACTION_TERMS = [
   "通話",
   "聲明",
   "宣布",
+  "推出",
   "警告",
   "譴責",
-  "制裁",
-  "反制",
-  "封鎖",
-  "禁運",
-  "出口管制",
-  "關稅",
   "談判",
   "協議",
-  "停火",
-  "開火",
-  "空襲",
-  "攻擊",
-  "轟炸",
-  "攔截",
-  "軍演",
-  "巡航",
-  "巡邏",
-  "部署",
-  "增兵",
-  "撤軍",
-  "發射",
   "通過",
   "表決",
   "否決",
@@ -840,18 +694,36 @@ const ACTION_TERMS = [
   "抗議",
   "示威",
   "峰會",
+
+  // Security / military
+  "制裁",
+  "反制",
+  "封鎖",
+  "禁運",
+  "出口管制",
+  "科技管制",
+  "關稅",
+  "停火",
+  "開火",
+  "空襲",
+  "攻擊",
+  "轟炸",
+  "攔截",
+  "軍演",
+  "巡航",
+  "巡邏",
+  "部署",
+  "增兵",
+  "撤軍",
+  "發射",
   "入侵",
   "衝突",
-    "出口管制",
-  "科技管制",
-  "制裁",
-  "關稅",
+
+  // Economy / industry / technology
   "限制",
   "禁令",
   "補貼",
   "投資",
-  "推出",
-  "宣布",
   "承諾",
   "建設",
   "擴張",
@@ -869,10 +741,32 @@ const ACTION_TERMS = [
 ];
 
 const POLICY_TOPICS = [
+  // Semiconductor / AI
+  "人工智慧",
+  "生成式AI",
+  "大型語言模型",
+  "資料中心",
+  "GPU",
+  "AI加速器",
   "半導體",
   "晶片",
+  "先進晶片",
   "AI晶片",
-  "人工智慧",
+  "記憶體晶片",
+  "高頻寬記憶體",
+  "晶圓",
+  "晶圓代工",
+  "晶圓廠",
+  "EUV",
+  "微影",
+  "出口管制",
+  "科技管制",
+  "產業政策",
+  "科技供應鏈",
+  "經濟安全",
+  "AI基礎設施",
+
+  // Resources / economy
   "稀土",
   "關鍵礦物",
   "供應鏈",
@@ -886,6 +780,16 @@ const POLICY_TOPICS = [
   "淨零",
   "永續",
   "ESG",
+  "貿易",
+  "投資",
+  "匯率",
+  "通膨",
+  "利率",
+  "制裁",
+  "關稅",
+  "補貼",
+
+  // Security / defense
   "國防預算",
   "軍費",
   "飛彈",
@@ -900,41 +804,14 @@ const POLICY_TOPICS = [
   "假訊息",
   "認知作戰",
   "數位主權",
-  "資料中心",
   "移民",
   "難民",
   "邊境",
-  "貿易",
-  "投資",
-  "匯率",
-  "通膨",
-  "利率",
-  "人工智慧",
-  "生成式AI",
-  "大型語言模型",
-  "資料中心",
-  "GPU",
-  "AI加速器",
-  "晶片",
-  "半導體",
-  "先進晶片",
-  "AI晶片",
-  "記憶體晶片",
-  "高頻寬記憶體",
-  "晶圓代工",
-  "晶圓廠",
-  "EUV",
-  "出口管制",
-  "科技管制",
-  "制裁",
-  "關稅",
-  "補貼",
-  "產業政策",
-  "供應鏈",
-  "科技供應鏈",
-  "經濟安全",
-  "AI基礎設施",
 ];
+
+/* ============================================================================
+ * 6. Utility functions
+ * ========================================================================== */
 
 function toNumber(value: number | string | null | undefined) {
   if (value === null || value === undefined) return 5.5;
@@ -945,7 +822,12 @@ function toNumber(value: number | string | null | undefined) {
 
 function unique(values: (string | null | undefined)[]) {
   return Array.from(
-    new Set(values.filter((value): value is string => Boolean(value)))
+    new Set(
+      values
+        .filter((value): value is string => Boolean(value))
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
   );
 }
 
@@ -957,6 +839,36 @@ function cleanToken(value: string) {
   return value.trim().replace(/\s+/g, "");
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isLatinKeyword(value: string) {
+  return /^[a-z0-9][a-z0-9\s.-]*$/i.test(value);
+}
+
+function includesTerm(text: string, term: string) {
+  const cleanTerm = term.trim();
+
+  if (!cleanTerm) return false;
+
+  if (isLatinKeyword(cleanTerm)) {
+    const escapedTerm = escapeRegExp(cleanTerm.toLowerCase()).replace(
+      /\\\s+/g,
+      "\\s+"
+    );
+
+    const pattern = new RegExp(
+      `(^|[^a-z0-9])${escapedTerm}([^a-z0-9]|$)`,
+      "i"
+    );
+
+    return pattern.test(text.toLowerCase());
+  }
+
+  return text.includes(cleanTerm);
+}
+
 function normalizeAlias(value: string) {
   const normalized = normalize(value);
   return ALIAS_MAP[normalized] ?? value;
@@ -966,16 +878,20 @@ function normalizeAliasList(values: string[]) {
   return unique(values.map((value) => normalizeAlias(value)));
 }
 
-function extractAliases(text: string) {
-  const lowerText = text.toLowerCase();
+/* ============================================================================
+ * 7. Signal extraction
+ * ========================================================================== */
 
-  return Object.entries(ALIAS_MAP)
-    .filter(([alias]) => lowerText.includes(alias.toLowerCase()))
-    .map(([, canonical]) => canonical);
+function extractAliases(text: string) {
+  return unique(
+    Object.entries(ALIAS_MAP)
+      .filter(([alias]) => includesTerm(text, alias))
+      .map(([, canonical]) => canonical)
+  );
 }
 
 function extractKnownTerms(text: string, dictionary: string[]) {
-  return dictionary.filter((term) => text.includes(term));
+  return unique(dictionary.filter((term) => includesTerm(text, term)));
 }
 
 function fallbackTokens(text: string) {
@@ -1066,6 +982,10 @@ function getEventSignal(article: Article): EventSignal {
   };
 }
 
+/* ============================================================================
+ * 8. Cluster scoring logic
+ * ========================================================================== */
+
 function overlapItems(a: string[], b: string[]) {
   const setB = new Set(b.map((item) => normalize(item)));
 
@@ -1105,7 +1025,7 @@ function isWithinTimeWindow(article: Article, cluster: ClusterDraft) {
 function hasContradictoryRegion(article: Article, cluster: ClusterDraft) {
   if (!article.region || !cluster.region) return false;
 
-  const broadRegions = new Set(["全球", "國際", "國際政治"]);
+  const broadRegions = new Set(["全球", "國際", "國際政治", "美中"]);
 
   if (broadRegions.has(article.region) || broadRegions.has(cluster.region)) {
     return false;
@@ -1118,8 +1038,14 @@ function getSpecificOverlap(article: Article, cluster: ClusterDraft) {
   const articleSignal = getEventSignal(article);
   const clusterSignal = getClusterSignals(cluster);
 
-  const entityOverlap = overlapItems(articleSignal.entities, clusterSignal.entities);
-  const actionOverlap = overlapItems(articleSignal.actions, clusterSignal.actions);
+  const entityOverlap = overlapItems(
+    articleSignal.entities,
+    clusterSignal.entities
+  );
+  const actionOverlap = overlapItems(
+    articleSignal.actions,
+    clusterSignal.actions
+  );
   const topicOverlap = overlapItems(articleSignal.topics, clusterSignal.topics);
   const allOverlap = overlapItems(articleSignal.all, clusterSignal.all);
 
@@ -1200,6 +1126,10 @@ function shouldJoinCluster(article: Article, cluster: ClusterDraft) {
   );
 }
 
+/* ============================================================================
+ * 9. Cluster creation and summaries
+ * ========================================================================== */
+
 function makeClusterTitle(articles: Article[]) {
   const sorted = [...articles].sort(
     (a, b) => toNumber(b.score) - toNumber(a.score)
@@ -1208,12 +1138,66 @@ function makeClusterTitle(articles: Article[]) {
   return sorted[0]?.title ?? "未命名事件群組";
 }
 
+function hasChineseText(value: string) {
+  return /[\u4e00-\u9fff]/.test(value);
+}
+
+function makeChineseEventLabel(articles: Article[]) {
+  const signals = unique(
+    articles.flatMap((article) => {
+      const signal = getEventSignal(article);
+
+      return [
+        ...signal.entities.slice(0, 4),
+        ...signal.actions.slice(0, 3),
+        ...signal.topics.slice(0, 4),
+      ];
+    })
+  )
+    .filter((item) => !BROAD_CLUSTER_TERMS.has(item))
+    .slice(0, 8);
+
+  if (signals.length > 0) {
+    return signals.join("、");
+  }
+
+  const chineseTitle = articles.find((article) =>
+    hasChineseText(article.title)
+  )?.title;
+
+  if (chineseTitle) {
+    return chineseTitle;
+  }
+
+  return "此事件";
+}
+
+function makeArticleExampleText(article: Article) {
+  if (hasChineseText(article.title)) {
+    return `「${article.title}」`;
+  }
+
+  const signal = getEventSignal(article);
+
+  const signals = unique([
+    ...signal.entities.slice(0, 3),
+    ...signal.actions.slice(0, 2),
+    ...signal.topics.slice(0, 3),
+  ])
+    .filter((item) => !BROAD_CLUSTER_TERMS.has(item))
+    .slice(0, 6);
+
+  if (signals.length > 0) {
+    return `一篇關於「${signals.join("、")}」的外文報導`;
+  }
+
+  return "一篇相關外文報導";
+}
+
 function makeClusterSummary(articles: Article[]) {
   const sources = unique(articles.map((article) => article.source));
   const topArticles = articles.slice(0, 3);
-  const highestScoreArticle = [...articles].sort(
-    (a, b) => toNumber(b.score) - toNumber(a.score)
-  )[0];
+  const eventLabel = makeChineseEventLabel(articles);
 
   if (articles.length > 3) {
     const signals = unique(
@@ -1225,27 +1209,32 @@ function makeClusterSummary(articles: Article[]) {
           ...signal.topics.slice(0, 3),
         ];
       })
-    ).slice(0, 8);
+    )
+      .filter((item) => !BROAD_CLUSTER_TERMS.has(item))
+      .slice(0, 8);
 
     const coreSignalText =
       signals.length > 0 ? `核心訊號包括 ${signals.join("、")}。` : "";
 
     const articleExamples = topArticles
-      .map((article) => `「${article.title}」`)
+      .map((article) => makeArticleExampleText(article))
       .join("、");
 
-    return `這個事件群組目前包含 ${articles.length} 篇新聞，來自 ${sources.length} 個來源，包括 ${sources.join(
+    return `這個事件群組目前包含 ${articles.length} 篇新聞，來自 ${
+      sources.length
+    } 個來源，包括 ${sources.join(
       "、"
-    )}。簡述：這組新聞大致圍繞「${
-      highestScoreArticle?.title ?? articles[0]?.title ?? "未命名事件"
-    }」所代表的事件或議題發展，反映多個來源正在追蹤同一條新聞線索。${coreSignalText}代表性新聞包括：${articleExamples}。`;
+    )}。簡述：這組新聞大致圍繞「${eventLabel}」相關事件，反映多個來源正在追蹤同一條新聞線索。${coreSignalText}代表性新聞包括：${articleExamples}。`;
   }
+
+  const articleExamples = topArticles
+    .map((article) => makeArticleExampleText(article))
+    .join("、");
 
   return `此事件群組由 ${articles.length} 篇新聞組成，來源包括 ${sources.join(
     "、"
-  )}。主要新聞包括：${topArticles
-    .map((article) => `「${article.title}」`)
-    .join("、")}。`;
+  )}。事件主軸為「${eventLabel}」。主要新聞包括：${articleExamples}。`;
+
 }
 
 function updateCluster(cluster: ClusterDraft) {
@@ -1324,6 +1313,10 @@ function buildClusters(articles: Article[]) {
 
   return clusters.sort((a, b) => b.score - a.score);
 }
+
+/* ============================================================================
+ * 10. API route
+ * ========================================================================== */
 
 export async function GET() {
   const supabase = createSupabaseServerClient();
@@ -1438,7 +1431,8 @@ export async function GET() {
     articles: typedArticles.length,
     clusters: insertedClusters,
     relations: insertedRelations,
-    method: "entity-action-topic clustering with english alias normalization",
+    method:
+      "entity-action-topic clustering with categorized alias taxonomy and precise latin matching",
     max_articles: MAX_ARTICLES,
     time_window_hours: TIME_WINDOW_HOURS,
   });
