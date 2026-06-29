@@ -31,6 +31,7 @@ type Cluster = {
   latest_published_at: string | null;
   status: string | null;
   created_at: string;
+  summary_source: string | null;
   cluster_articles: ClusterArticleRelation[] | null;
 };
 
@@ -401,9 +402,17 @@ function ClusterCard({
       </p>
 
       {cluster.summary && !compact && (
+        <div className="mt-3 space-y-1">
         <p className="mt-3 text-sm leading-6 text-slate-600">
           {cluster.summary}
         </p>
+
+        {cluster.summary_source === "gemini" && (
+          <p className="text-xs text-slate-400">
+            ✦ Gemini generated summary
+          </p>
+        )}
+      </div>
       )}
 
       <div className="mt-3 flex flex-wrap gap-2">
