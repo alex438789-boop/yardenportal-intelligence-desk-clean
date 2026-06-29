@@ -148,6 +148,8 @@ export function SourceBubblePool({
     let animationFrame = 0;
 
     function animate() {
+      if (!container) return;
+      
       const currentRect = container.getBoundingClientRect();
       width = currentRect.width;
       height = currentRect.height;
