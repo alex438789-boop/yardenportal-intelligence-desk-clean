@@ -91,15 +91,39 @@ function normalizeText(value: string) {
   return value.toLowerCase();
 }
 
-function includesAny(text: string, keywords: string[]) {
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isLatinKeyword(value: string) {
+  return /^[a-z0-9][a-z0-9\s-]*$/i.test(value);
+}
+
+function includesKeyword(text: string, keyword: string) {
+  const cleanKeyword = keyword.trim();
+
+  if (!cleanKeyword) return false;
+
   const normalizedText = normalizeText(text);
+  const normalizedKeyword = normalizeText(cleanKeyword);
 
-  return keywords.some((keyword) => {
-    const cleanKeyword = keyword.trim();
-    if (!cleanKeyword) return false;
+  if (isLatinKeyword(cleanKeyword)) {
+    const escapedKeyword = escapeRegExp(normalizedKeyword).replace(
+      /\\\s+/g,
+      "\\s+"
+    );
 
-    return normalizedText.includes(cleanKeyword.toLowerCase());
-  });
+    const pattern = new RegExp(`(^|[^a-z0-9])${escapedKeyword}([^a-z0-9]|$)`, "i");
+
+    return pattern.test(normalizedText);
+  }
+
+  return normalizedText.includes(normalizedKeyword);
+}
+
+function includesAny(text: string, keywords: string[]) {
+  return keywords.some((keyword) => includesKeyword(text, keyword));
+}
 }
 
 function unique(values: string[]) {
