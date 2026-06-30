@@ -72,8 +72,9 @@ type GeneratedClusterText = {
  * 2. Core settings
  * ========================================================================== */
 
-const MAX_ARTICLES = 100;
+const MAX_ARTICLES = 150;
 const TIME_WINDOW_HOURS = 72;
+const MACRO_CONFLICT_TIME_WINDOW_HOURS = 168;
 const GEMINI_MODEL = "gemini-2.5-flash";
 const MAX_GEMINI_ARTICLES_PER_CLUSTER = 8;
 const MAX_GEMINI_CLUSTERS_PER_REBUILD = 20;
@@ -1180,6 +1181,106 @@ function truncateText(value: string | null | undefined, maxLength: number) {
   return clean.length > maxLength ? `${clean.slice(0, maxLength)}...` : clean;
 }
 
+function includesAnyTerm(text: string, terms: string[]) {
+  return terms.some((term) => includesTerm(text, term));
+}
+
+function getArticleFullText(article: Article) {
+  return [
+    article.title,
+    article.summary,
+    article.region,
+    article.category,
+    ...(article.topic_tags ?? []),
+    ...(article.matched_rules ?? []),
+    ...(article.event_keywords ?? []),
+  ].join(" ");
+}
+
+function isWithinMacroConflictWindow(article: Article, cluster: ClusterDraft) {
+  const articleTime = article.published_at
+    ? new Date(article.published_at).getTime()
+    : null;
+
+  const clusterTimes = cluster.articles
+    .map((item) =>
+      item.published_at ? new Date(item.published_at).getTime() : null
+    )
+    .filter((value): value is number => value !== null);
+
+  if (!articleTime || clusterTimes.length === 0) return true;
+
+  const latestClusterTime = Math.max(...clusterTimes);
+  const diffHours = Math.abs(articleTime - latestClusterTime) / 1000 / 60 / 60;
+
+  return diffHours <= MACRO_CONFLICT_TIME_WINDOW_HOURS;
+}
+
+function isIranConflictArticle(article: Article) {
+  const text = getArticleFullText(article);
+
+  const hasIran = includesAnyTerm(text, [
+    "伊朗",
+    "Iran",
+    "Tehran",
+    "德黑蘭",
+  ]);
+
+  const hasCounterparty = includesAnyTerm(text, [
+    "以色列",
+    "Israel",
+    "美國",
+    "United States",
+    "U.S.",
+    "US",
+    "美軍",
+    "川普",
+    "Trump",
+  ]);
+
+  const hasConflictSignal = includesAnyTerm(text, [
+    "戰爭",
+    "衝突",
+    "攻擊",
+    "空襲",
+    "轟炸",
+    "飛彈",
+    "無人機",
+    "停火",
+    "核",
+    "核查",
+    "鈾",
+    "IAEA",
+    "制裁",
+    "油輪",
+    "霍爾木茲",
+    "Hormuz",
+    "missile",
+    "strike",
+    "attack",
+    "ceasefire",
+    "nuclear",
+    "sanction",
+  ]);
+
+  return hasIran && hasCounterparty && hasConflictSignal;
+}
+
+function isIranConflictCluster(cluster: ClusterDraft) {
+  return cluster.articles.some((article) => isIranConflictArticle(article));
+}
+
+function shouldJoinIranConflictMacroCluster(
+  article: Article,
+  cluster: ClusterDraft
+) {
+  if (!isIranConflictArticle(article)) return false;
+  if (!isIranConflictCluster(cluster)) return false;
+  if (!isWithinMacroConflictWindow(article, cluster)) return false;
+
+  return true;
+}
+
 function isCrisisGroupSource(source: string | null | undefined) {
   return Boolean(source?.toLowerCase().includes("crisis group"));
 }
@@ -1509,6 +1610,8 @@ function clusterScore(article: Article, cluster: ClusterDraft) {
 }
 
 function shouldJoinCluster(article: Article, cluster: ClusterDraft) {
+  if (shouldJoinIranConflictMacroCluster(article, cluster)) return true;
+
   if (!isWithinTimeWindow(article, cluster)) return false;
   if (hasContradictoryRegion(article, cluster)) return false;
   if (hasContradictoryCrisisWatchPlace(article, cluster)) return false;
@@ -1923,6 +2026,40 @@ export async function GET(request: Request) {
 
   const typedArticles = (articles ?? []) as Article[];
   const clusters = buildClusters(typedArticles);
+  const articleRegionCounts = typedArticles.reduce<Record<string, number>>(
+  (acc, article) => {
+    const key = article.region ?? "unknown";
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  },
+  {}
+);
+
+const articleCategoryCounts = typedArticles.reduce<Record<string, number>>(
+  (acc, article) => {
+    const key = article.category ?? "unknown";
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  },
+  {}
+);
+
+const clusterRegionCounts = clusters.reduce<Record<string, number>>(
+  (acc, cluster) => {
+    const key = cluster.region ?? "unknown";
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  },
+  {}
+);
+
+const singletonClusters = clusters.filter(
+  (cluster) => cluster.articles.length === 1
+).length;
+
+const realClusters = clusters.filter(
+  (cluster) => cluster.articles.length >= 2
+).length;
 
   const { error: deleteRelationsError } = await supabase
     .from("cluster_articles")
@@ -2041,5 +2178,10 @@ export async function GET(request: Request) {
     gemini_generated_clusters: geminiGeneratedClusters,
     max_articles: MAX_ARTICLES,
     time_window_hours: TIME_WINDOW_HOURS,
+    article_region_counts: articleRegionCounts,
+    article_category_counts: articleCategoryCounts,
+    cluster_region_counts: clusterRegionCounts,
+    real_clusters: realClusters,
+    singleton_clusters: singletonClusters,
   });
 }
