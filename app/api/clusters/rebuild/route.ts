@@ -1180,6 +1180,49 @@ function truncateText(value: string | null | undefined, maxLength: number) {
   return clean.length > maxLength ? `${clean.slice(0, maxLength)}...` : clean;
 }
 
+function isCrisisGroupSource(source: string | null | undefined) {
+  return Boolean(source?.toLowerCase().includes("crisis group"));
+}
+
+function getCrisisWatchPlace(title: string | null | undefined) {
+  if (!title) return null;
+
+  const match = title
+    .trim()
+    .match(/^([A-Z][A-Za-z\s.'()/-]+?)\s+\d{1,2}\s+[A-Z][a-z]+\s+20\d{2}\s+#\d+$/);
+
+  return match?.[1]?.trim() ?? null;
+}
+
+function getArticleCrisisWatchPlace(article: Article) {
+  if (!isCrisisGroupSource(article.source)) return null;
+
+  return getCrisisWatchPlace(article.title);
+}
+
+function getClusterCrisisWatchPlaces(cluster: ClusterDraft) {
+  return unique(
+    cluster.articles
+      .map((article) => getArticleCrisisWatchPlace(article))
+      .filter(Boolean)
+  );
+}
+
+function hasContradictoryCrisisWatchPlace(
+  article: Article,
+  cluster: ClusterDraft
+) {
+  const articlePlace = getArticleCrisisWatchPlace(article);
+
+  if (!articlePlace) return false;
+
+  const clusterPlaces = getClusterCrisisWatchPlaces(cluster);
+
+  if (clusterPlaces.length === 0) return false;
+
+  return !clusterPlaces.includes(articlePlace);
+}
+
 /* ============================================================================
  * 8. Event type detection
  * ========================================================================== */
@@ -1468,6 +1511,7 @@ function clusterScore(article: Article, cluster: ClusterDraft) {
 function shouldJoinCluster(article: Article, cluster: ClusterDraft) {
   if (!isWithinTimeWindow(article, cluster)) return false;
   if (hasContradictoryRegion(article, cluster)) return false;
+  if (hasContradictoryCrisisWatchPlace(article, cluster)) return false;
   if (!areEventTypesCompatible(article, cluster)) return false;
 
   const { entityOverlap, actionOverlap, topicOverlap } = getSpecificOverlap(
