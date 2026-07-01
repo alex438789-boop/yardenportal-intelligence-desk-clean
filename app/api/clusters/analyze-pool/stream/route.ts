@@ -581,8 +581,7 @@ export async function GET() {
         const finalParsed = await generateGeminiJson({
           ai,
           prompt: finalPrompt,
-          model: GEMINI_BATCH_MODEL,
-          merge_model: GEMINI_MERGE_MODEL,
+          model: GEMINI_MERGE_MODEL,
         });
 
         const finalAnalysis = sanitizeGeminiAnalysis(finalParsed, typedArticles);
