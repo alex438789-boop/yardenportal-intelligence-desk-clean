@@ -629,8 +629,6 @@ export default async function ClustersPage() {
         <AnalyzePoolAiButton />
       </div>
 
-      <AnalyzePoolAiButton />
-    </div>
 
       <section className="mb-10 grid gap-4 md:grid-cols-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
