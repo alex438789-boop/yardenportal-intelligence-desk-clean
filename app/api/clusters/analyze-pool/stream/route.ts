@@ -3,8 +3,8 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const maxDuration = 180;
 
-const GEMINI_BATCH_MODEL = "gemini-2.5-flash-lite";
-const GEMINI_MERGE_MODEL = "gemini-2.5-flash-lite";
+const GEMINI_BATCH_MODEL = "gemini-2.5-flash";
+const GEMINI_MERGE_MODEL = "gemini-2.5-flash";
 const MAX_ARTICLES = 120;
 const BATCH_SIZE = 60;
 const MAX_SUMMARY_CHARS = 120;
