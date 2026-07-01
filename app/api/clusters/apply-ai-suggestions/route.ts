@@ -23,13 +23,9 @@ function unique(values: string[]) {
 }
 
 function isUuid(value: string) {
-
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-
     value
-
   );
-
 }
 
 function makeSummary(family: SelectedFamily) {
@@ -43,7 +39,10 @@ function makeSummary(family: SelectedFamily) {
   return `${family.why_it_matters}｜AI 判斷類型：${scopeLabel}。`;
 }
 
-function calculatePriorityScore(family: SelectedFamily, articles: ArticleRecord[]) {
+function calculatePriorityScore(
+  family: SelectedFamily,
+  articles: ArticleRecord[]
+) {
   const sourceCount = unique(articles.map((article) => article.source)).length;
   const articleCount = articles.length;
 
@@ -75,74 +74,23 @@ export async function POST(request: Request) {
   }
 
   const validFamilies = families
-
-  .map((family) => ({
-
-    ...family,
-
-    article_ids: unique(family.article_ids ?? []).filter(isUuid),
-
-  }))
-
-  .filter((family) => family.article_ids.length >= 2);
+    .map((family) => ({
+      ...family,
+      article_ids: unique(family.article_ids ?? []).filter(isUuid),
+    }))
+    .filter((family) => family.article_ids.length >= 2);
 
   if (validFamilies.length === 0) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Selected families must contain at least 2 article IDs",
+        error: "Selected families must contain at least 2 valid article UUIDs",
       },
       { status: 400 }
     );
   }
 
   const supabase = createSupabaseServerClient();
-
-  const allArticleIds = unique(
-    validFamilies.flatMap((family) => family.article_ids)
-  );
-
-  const { data: existingRelations, error: relationError } = await supabase
-    .from("cluster_articles")
-    .select("cluster_id, article_id")
-    .in("article_id", allArticleIds);
-
-  if (relationError) {
-    return NextResponse.json(
-      { ok: false, error: relationError.message },
-      { status: 500 }
-    );
-  }
-
-  const affectedClusterIds = unique(
-    (existingRelations ?? []).map((relation) => relation.cluster_id)
-  );
-
-  if (affectedClusterIds.length > 0) {
-    const { error: deleteRelationError } = await supabase
-      .from("cluster_articles")
-      .delete()
-      .in("cluster_id", affectedClusterIds);
-
-    if (deleteRelationError) {
-      return NextResponse.json(
-        { ok: false, error: deleteRelationError.message },
-        { status: 500 }
-      );
-    }
-
-    const { error: deleteClusterError } = await supabase
-      .from("article_clusters")
-      .delete()
-      .in("id", affectedClusterIds);
-
-    if (deleteClusterError) {
-      return NextResponse.json(
-        { ok: false, error: deleteClusterError.message },
-        { status: 500 }
-      );
-    }
-  }
 
   const createdClusters: Array<{
     id: string;
@@ -188,7 +136,10 @@ export async function POST(request: Request) {
 
     if (clusterError || !cluster) {
       return NextResponse.json(
-        { ok: false, error: clusterError?.message ?? "Failed to create cluster" },
+        {
+          ok: false,
+          error: clusterError?.message ?? "Failed to create cluster",
+        },
         { status: 500 }
       );
     }
@@ -218,9 +169,9 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    method: "apply selected Gemini dominant event families as clusters",
+    method: "append selected Gemini dominant event families as AI-assisted clusters",
     selected_families: validFamilies.length,
-    affected_old_clusters: affectedClusterIds.length,
+    affected_old_clusters: 0,
     created_clusters: createdClusters.length,
     clusters: createdClusters,
   });
