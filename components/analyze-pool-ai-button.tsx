@@ -347,11 +347,7 @@ export function AnalyzePoolAiButton() {
             <p className="mt-3 text-sm text-slate-500">{applyMessage}</p>
           )}
 
-          {loadingAnalysis && progressMessage && (
-            <p className="mt-3 text-sm font-medium text-violet-600">
-              {progressMessage}
-            </p>
-          )}
+          
 
           {result && !result.ok && (
             <div className="mt-5 rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-600">

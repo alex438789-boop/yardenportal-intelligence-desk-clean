@@ -281,6 +281,34 @@ ${articleText}
 `.trim();
 }
 
+function compactAnalysisForMerge(analysis: GeminiAnalysis) {
+  return {
+    dominant_event_families: (analysis.dominant_event_families ?? []).map(
+      (item) => ({
+        zh_title: item.zh_title,
+        event_scope: item.event_scope,
+        region: item.region,
+        category: item.category,
+        article_ids: item.article_ids,
+        recommendation: item.recommendation,
+        confidence: item.confidence,
+      })
+    ),
+    singleton_candidates: (analysis.singleton_candidates ?? []).map((item) => ({
+      zh_title: item.zh_title,
+      article_ids: item.article_ids,
+      suggested_action: item.suggested_action,
+      confidence: item.confidence,
+    })),
+    overcluster_risks: (analysis.overcluster_risks ?? []).map((item) => ({
+      zh_title: item.zh_title,
+      article_ids: item.article_ids,
+      suggested_action: item.suggested_action,
+      confidence: item.confidence,
+    })),
+  };
+}
+
 function makeFinalMergePrompt({
   analyses,
   totalArticles,
@@ -290,13 +318,15 @@ function makeFinalMergePrompt({
   totalArticles: number;
   totalBatches: number;
 }) {
+
   const partialText = analyses
-    .map((analysis, index) => {
-      return [`Batch ${index + 1}`, JSON.stringify(analysis, null, 2)].join(
-        "\n"
-      );
-    })
-    .join("\n\n");
+  .map((analysis, index) => {
+    return [
+      `Batch ${index + 1}`,
+      JSON.stringify(compactAnalysisForMerge(analysis), null, 2),
+    ].join("\n");
+  })
+  .join("\n\n");
 
   return `
 你是 YardenPORTAL Intelligence Desk 的國際政治與政策風險分析助手。
