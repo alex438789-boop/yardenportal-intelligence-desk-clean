@@ -494,7 +494,8 @@ export async function GET() {
               articles: 0,
               batches: 0,
               batch_size: BATCH_SIZE,
-              model: GEMINI_MODEL,
+              model: GEMINI_BATCH_MODEL,
+              merge_model: GEMINI_MERGE_MODEL,
               analysis: {
                 dominant_event_families: [],
                 singleton_candidates: [],
@@ -594,7 +595,8 @@ export async function GET() {
             articles: typedArticles.length,
             batches: articleBatches.length,
             batch_size: BATCH_SIZE,
-            model: GEMINI_MODEL,
+            model: GEMINI_BATCH_MODEL,
+            merge_model: GEMINI_MERGE_MODEL,
             analysis: finalAnalysis,
           },
         });
