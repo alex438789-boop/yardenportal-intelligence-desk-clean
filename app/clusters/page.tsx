@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase";
 import { RebuildClustersButton } from "@/components/rebuild-clusters-button";
 import { GenerateClusterAiButton } from "@/components/generate-cluster-ai-button";
+import { AnalyzePoolAiButton } from "@/components/analyze-pool-ai-button";
 
 export const dynamic = "force-dynamic";
 
@@ -613,7 +614,7 @@ export default async function ClustersPage() {
             Taiwan Watch 作為追蹤群組，但不會自動獲得額外排序加權。
           </p>
         </div>
-
+      <div className="space-y-4">
         <div className="flex flex-wrap gap-3">
           <RebuildClustersButton />
 
@@ -625,6 +626,9 @@ export default async function ClustersPage() {
           </Link>
         </div>
       </div>
+
+      <AnalyzePoolAiButton />
+    </div>
 
       <section className="mb-10 grid gap-4 md:grid-cols-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
