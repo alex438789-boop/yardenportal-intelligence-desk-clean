@@ -608,10 +608,8 @@ export default async function ClustersPage() {
             Clusters 事件群組
           </h1>
 
-          <p className="mt-3 max-w-3xl text-slate-600">
-            這裡只顯示由 2 篇以上 articles
-            組成的事件群組。單篇文章不會被視為 cluster。排序依據事件優先級、來源數、新鮮度、風險訊號與政策／產業相關性；台灣相關事件會放入
-            Taiwan Watch 作為追蹤群組，但不會自動獲得額外排序加權。
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            將 articles 依照事件訊號、時間窗與來源交叉比對後，形成可追蹤的事件群組。
           </p>
         </div>
       <div className="space-y-4">
@@ -625,6 +623,10 @@ export default async function ClustersPage() {
             回 Articles
           </Link>
         </div>
+      </div>
+
+      <div className="mb-8">
+        <AnalyzePoolAiButton />
       </div>
 
       <AnalyzePoolAiButton />
