@@ -61,6 +61,44 @@ function safeParseGeminiJson(value: string) {
   }
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+function sanitizeGeminiAnalysis(parsed: any, validArticleIds: Set<string>) {
+  function cleanArticleIds(value: unknown) {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => isUuid(item))
+      .filter((item) => validArticleIds.has(item));
+  }
+
+  return {
+    ...parsed,
+    dominant_event_families: (parsed?.dominant_event_families ?? []).map(
+      (item: any) => ({
+        ...item,
+        article_ids: cleanArticleIds(item.article_ids),
+      })
+    ),
+    singleton_candidates: (parsed?.singleton_candidates ?? []).map(
+      (item: any) => ({
+        ...item,
+        article_ids: cleanArticleIds(item.article_ids),
+      })
+    ),
+    overcluster_risks: (parsed?.overcluster_risks ?? []).map((item: any) => ({
+      ...item,
+      article_ids: cleanArticleIds(item.article_ids),
+    })),
+  };
+}
+
 function makePrompt(articles: Article[]) {
   const articleText = articles
     .map((article, index) => {
@@ -221,22 +259,37 @@ export async function GET() {
       );
     }
 
+    const validArticleIds = new Set(typedArticles.map((article) => article.id));
+    const sanitizedAnalysis = sanitizeGeminiAnalysis(parsed, validArticleIds);
+
     return NextResponse.json({
       ok: true,
       method: "Gemini article pool diagnostics",
       articles: typedArticles.length,
-      analysis: parsed,
+      analysis: sanitizedAnalysis,
     });
   } catch (error) {
+
     return NextResponse.json(
+
       {
+
         ok: false,
+
         error:
+
           error instanceof Error
+
             ? error.message
+
             : "Failed to analyze article pool",
+
       },
+
       { status: 500 }
+
     );
+
   }
+
 }

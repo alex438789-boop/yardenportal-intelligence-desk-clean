@@ -22,6 +22,16 @@ function unique(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function isUuid(value: string) {
+
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+
+    value
+
+  );
+
+}
+
 function makeSummary(family: SelectedFamily) {
   const scopeLabel =
     family.event_scope === "macro_event"
@@ -65,11 +75,16 @@ export async function POST(request: Request) {
   }
 
   const validFamilies = families
-    .map((family) => ({
-      ...family,
-      article_ids: unique(family.article_ids ?? []),
-    }))
-    .filter((family) => family.article_ids.length >= 2);
+
+  .map((family) => ({
+
+    ...family,
+
+    article_ids: unique(family.article_ids ?? []).filter(isUuid),
+
+  }))
+
+  .filter((family) => family.article_ids.length >= 2);
 
   if (validFamilies.length === 0) {
     return NextResponse.json(
