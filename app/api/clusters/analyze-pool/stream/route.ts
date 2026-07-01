@@ -5,8 +5,8 @@ export const maxDuration = 180;
 
 const GEMINI_BATCH_MODEL = "gemini-2.5-flash";
 const GEMINI_MERGE_MODEL = "gemini-2.5-flash-lite";
-const MAX_ARTICLES = 120;
-const BATCH_SIZE = 60;
+const MAX_ARTICLES = 150;
+const BATCH_SIZE = 75;
 const MAX_SUMMARY_CHARS = 120;
 const GEMINI_TIMEOUT_MS = 90000;
 
@@ -191,13 +191,11 @@ function makeArticleText(articles: Article[], startIndex: number) {
       return [
         `Article ${articleNumber}`,
         `UUID: ${article.id}`,
-        `Title: ${truncateText(article.title, 160)}`,
+        `Title: ${truncateText(article.title, 180)}`,
         `Source: ${article.source}`,
-        `Published at: ${article.published_at ?? "unknown"}`,
         `Region: ${article.region ?? "unknown"}`,
         `Category: ${article.category ?? "unknown"}`,
         `Score: ${article.score ?? "unknown"}`,
-        `Summary: ${truncateText(article.summary, MAX_SUMMARY_CHARS)}`,
       ].join("\n");
     })
     .join("\n\n");
