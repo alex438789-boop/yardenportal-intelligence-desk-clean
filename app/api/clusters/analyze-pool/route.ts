@@ -4,7 +4,8 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const MAX_ARTICLES = 120;
-const GEMINI_TIMEOUT_MS = 25000;
+const MAX_SUMMARY_CHARS = 220;
+const GEMINI_TIMEOUT_MS = 45000;
 
 type Article = {
   id: string;
@@ -75,7 +76,7 @@ function makePrompt(articles: Article[]) {
         `Topic tags: ${(article.topic_tags ?? []).join(", ") || "none"}`,
         `Matched rules: ${(article.matched_rules ?? []).join(", ") || "none"}`,
         `Event keywords: ${(article.event_keywords ?? []).join(", ") || "none"}`,
-        `Summary: ${truncateText(article.summary, 500)}`,
+        `Summary: ${truncateText(article.summary, MAX_SUMMARY_CHARS)}`,
       ].join("\n");
     })
     .join("\n\n");
@@ -94,6 +95,9 @@ function makePrompt(articles: Article[]) {
 7. 如果某個主題文章很多但可能被拆成 singleton，請放進 singleton_candidates。
 8. 請保守判斷，confidence 不足時低於 0.7。
 9. 只回傳 JSON，不要 markdown，不要解釋。
+10. dominant_event_families 最多 6 個。
+11. singleton_candidates 最多 6 個。
+12. overcluster_risks 最多 4 個。
 
 請回傳格式：
 
