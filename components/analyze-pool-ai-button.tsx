@@ -154,11 +154,19 @@ export function AnalyzePoolAiButton() {
   const analysis = result?.analysis;
   const dominantFamilies = analysis?.dominant_event_families ?? [];
 
+  const clusterableFamilies = dominantFamilies.filter(
+    (item) => (item.article_ids ?? []).length >= 2
+  );
+
+  const analysisOnlyFamilies = dominantFamilies.filter(
+    (item) => (item.article_ids ?? []).length < 2
+  );
+
   const selectedFamilies = useMemo(() => {
-    return dominantFamilies.filter((item, index) =>
+    return clusterableFamilies.filter((item, index) =>
       selectedFamilyKeys.includes(makeFamilyKey(item, index))
     );
-  }, [dominantFamilies, selectedFamilyKeys]);
+  }, [clusterableFamilies, selectedFamilyKeys]);
 
   function toggleFamily(item: EventFamily, index: number) {
     const key = makeFamilyKey(item, index);
@@ -203,7 +211,7 @@ export function AnalyzePoolAiButton() {
 
   async function applySelectedFamilies() {
     if (selectedFamilies.length === 0) {
-      setApplyMessage("請先勾選至少一個 dominant event family。");
+      setApplyMessage("請先勾選至少一個可建立 cluster 的 event family。");
       return;
     }
 
@@ -230,7 +238,7 @@ export function AnalyzePoolAiButton() {
       }
 
       setApplyMessage(
-        `完成：建立 ${data.created_clusters} 個 AI-assisted clusters，影響舊 clusters ${data.affected_old_clusters} 個。`
+        `完成：建立 ${data.created_clusters} 個 AI-assisted clusters。`
       );
 
       router.refresh();
@@ -257,7 +265,8 @@ export function AnalyzePoolAiButton() {
             Article Pool Analysis
           </h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            用 Gemini 檢查新聞池中主要事件群組，勾選後可依照 article IDs 建立 AI-assisted clusters。
+            用 Gemini 檢查新聞池中主要事件群組，勾選後可依照 article IDs 建立
+            AI-assisted clusters。
           </p>
         </div>
 
@@ -284,7 +293,7 @@ export function AnalyzePoolAiButton() {
               {loadingAnalysis ? "Analyzing..." : "Analyze Pool with AI"}
             </button>
 
-            {dominantFamilies.length > 0 && (
+            {clusterableFamilies.length > 0 && (
               <button
                 onClick={applySelectedFamilies}
                 disabled={loadingAnalysis || loadingApply}
@@ -333,24 +342,26 @@ export function AnalyzePoolAiButton() {
 
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">
-                  Dominant Event Families
+                  Dominant Event Families 可建立 Clusters
                 </h3>
 
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  勾選後按 Apply Selected，系統會依照 Gemini 提供的 article_ids 建立新的 cluster。
+                  這裡只顯示至少有 2 個有效 article_ids 的 Gemini 建議。勾選後按
+                  Apply Selected，系統會依照這些 article_ids 建立新的
+                  AI-assisted cluster。
                 </p>
 
                 <div className="mt-3 space-y-3">
-                  {dominantFamilies.length === 0 && (
+                  {clusterableFamilies.length === 0 && (
                     <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
-                      Gemini 沒有找到明顯的主要事件家族。
+                      目前沒有可直接建立 cluster 的 dominant event family。這代表
+                      Gemini 的觀察可能偏向 topic idea，或沒有提供足夠 article IDs。
                     </p>
                   )}
 
-                  {dominantFamilies.map((item, index) => {
+                  {clusterableFamilies.map((item, index) => {
                     const key = makeFamilyKey(item, index);
                     const selected = selectedFamilyKeys.includes(key);
-                    const enoughArticles = (item.article_ids ?? []).length >= 2;
 
                     return (
                       <div
@@ -364,8 +375,7 @@ export function AnalyzePoolAiButton() {
                         <div className="flex gap-3">
                           <button
                             onClick={() => toggleFamily(item, index)}
-                            disabled={!enoughArticles}
-                            className="mt-1 text-violet-600 disabled:text-slate-300"
+                            className="mt-1 text-violet-600"
                             aria-label="Select dominant event family"
                           >
                             {selected ? (
@@ -389,11 +399,9 @@ export function AnalyzePoolAiButton() {
                                 {formatConfidence(item.confidence)}
                               </span>
 
-                              {!enoughArticles && (
-                                <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">
-                                  article_ids 少於 2，不能建立 cluster
-                                </span>
-                              )}
+                              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                {item.article_ids?.length ?? 0} articles
+                              </span>
                             </div>
 
                             <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -419,6 +427,60 @@ export function AnalyzePoolAiButton() {
                     );
                   })}
                 </div>
+
+                {analysisOnlyFamilies.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Analysis-only Suggestions 分析參考
+                    </h3>
+
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      這些是 Gemini 提出的事件方向或 topic idea，但沒有至少 2
+                      個有效 article_ids，因此不會建立 cluster。
+                    </p>
+
+                    <div className="mt-3 space-y-3">
+                      {analysisOnlyFamilies.map((item, index) => (
+                        <div
+                          key={`${item.zh_title}-analysis-only-${index}`}
+                          className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="font-semibold text-slate-950">
+                              {item.zh_title}
+                            </h4>
+
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+                              {item.event_scope}
+                            </span>
+
+                            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
+                              {formatConfidence(item.confidence)}
+                            </span>
+
+                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                              analysis only
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-sm leading-6 text-slate-600">
+                            {item.why_it_matters}
+                          </p>
+
+                          <p className="mt-2 text-xs text-slate-500">
+                            {item.region} · {item.category} ·{" "}
+                            {labelRecommendation(item.recommendation)}
+                          </p>
+
+                          <p className="mt-2 text-xs text-slate-400">
+                            沒有足夠 article IDs，建議之後作為 Topic 或 rules
+                            調整參考。
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

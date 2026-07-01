@@ -2,9 +2,11 @@ import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+export const maxDuration = 60;
+
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
 const MAX_ARTICLES_PER_CLUSTER = 8;
-const GEMINI_TIMEOUT_MS = 12000;
+const GEMINI_TIMEOUT_MS = 45000;
 
 type RelatedArticle = {
   id: string;

@@ -133,9 +133,13 @@ function makePrompt(articles: Article[]) {
 7. 如果某個主題文章很多但可能被拆成 singleton，請放進 singleton_candidates。
 8. 請保守判斷，confidence 不足時低於 0.7。
 9. 只回傳 JSON，不要 markdown，不要解釋。
-10. dominant_event_families 最多 6 個。
-11. singleton_candidates 最多 6 個。
-12. overcluster_risks 最多 4 個。
+10. dominant_event_families 最多 4 個。
+11. singleton_candidates 最多 4 個。
+12. overcluster_risks 最多 3 個。
+13. 每個項目的 article_ids 最多列 8 個。
+14. 回答要短，避免長篇分析。
+15. dominant_event_families 每個項目必須至少包含 2 個 article_ids；如果無法提供至少 2 個 article_ids，不要放進 dominant_event_families。
+16. 如果某個判斷只是概念性觀察、長期議題或 topic idea，但沒有至少 2 個明確 article_ids，請放進 singleton_candidates 或 coverage_summary，不要放進 dominant_event_families。
 
 請回傳格式：
 
