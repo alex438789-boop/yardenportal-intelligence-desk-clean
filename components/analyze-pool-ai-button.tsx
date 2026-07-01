@@ -150,6 +150,7 @@ export function AnalyzePoolAiButton() {
   const [result, setResult] = useState<ApiResult | null>(null);
   const [selectedFamilyKeys, setSelectedFamilyKeys] = useState<string[]>([]);
   const [applyMessage, setApplyMessage] = useState("");
+  const [progressMessage, setProgressMessage] = useState("");
 
   const analysis = result?.analysis;
   const dominantFamilies = analysis?.dominant_event_families ?? [];
@@ -180,34 +181,65 @@ export function AnalyzePoolAiButton() {
     });
   }
 
-  async function analyzePool() {
-    setOpen(true);
-    setLoadingAnalysis(true);
-    setResult(null);
-    setSelectedFamilyKeys([]);
-    setApplyMessage("");
+  function analyzePool() {
+  setOpen(true);
+  setLoadingAnalysis(true);
+  setResult(null);
+  setSelectedFamilyKeys([]);
+  setApplyMessage("");
+  setProgressMessage("正在啟動 AI diagnostics stream...");
 
+  const eventSource = new EventSource("/api/clusters/analyze-pool/stream");
+
+  eventSource.onmessage = (event) => {
     try {
-      const response = await fetch("/api/clusters/analyze-pool", {
-        method: "GET",
-        cache: "no-store",
-      });
+      const payload = JSON.parse(event.data) as {
+        type: "progress" | "complete" | "error";
+        message?: string;
+        result?: ApiResult;
+      };
 
-      const data = (await response.json()) as ApiResult;
+      if (payload.type === "progress") {
+        setProgressMessage(payload.message ?? "AI diagnostics 進行中...");
+      }
 
-      setResult(data);
-    } catch (error) {
+      if (payload.type === "complete") {
+        setResult(payload.result ?? null);
+        setProgressMessage("完成：AI diagnostics 已產生。");
+        setLoadingAnalysis(false);
+        eventSource.close();
+      }
+
+      if (payload.type === "error") {
+        setResult({
+          ok: false,
+          error: payload.message ?? "AI diagnostics failed",
+        });
+        setProgressMessage("AI diagnostics 失敗。");
+        setLoadingAnalysis(false);
+        eventSource.close();
+      }
+    } catch {
       setResult({
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "AI article pool analysis failed",
+        error: "Failed to parse AI diagnostics stream event",
       });
-    } finally {
+      setProgressMessage("AI diagnostics stream 解析失敗。");
       setLoadingAnalysis(false);
+      eventSource.close();
     }
-  }
+  };
+
+  eventSource.onerror = () => {
+    setResult({
+      ok: false,
+      error: "AI diagnostics stream interrupted",
+    });
+    setProgressMessage("AI diagnostics stream 中斷。");
+    setLoadingAnalysis(false);
+    eventSource.close();
+  };
+}
 
   async function applySelectedFamilies() {
     if (selectedFamilies.length === 0) {
@@ -290,7 +322,7 @@ export function AnalyzePoolAiButton() {
               ) : (
                 <Brain className="h-4 w-4" />
               )}
-              {loadingAnalysis ? "Analyzing..." : "Analyze Pool with AI"}
+              {loadingAnalysis ? progressMessage || "Analyzing..." : "Analyze Pool with AI"}
             </button>
 
             {clusterableFamilies.length > 0 && (
@@ -313,6 +345,12 @@ export function AnalyzePoolAiButton() {
 
           {applyMessage && (
             <p className="mt-3 text-sm text-slate-500">{applyMessage}</p>
+          )}
+
+          {loadingAnalysis && progressMessage && (
+            <p className="mt-3 text-sm font-medium text-violet-600">
+              {progressMessage}
+            </p>
           )}
 
           {result && !result.ok && (

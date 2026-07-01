@@ -1,8 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
-import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
-export const maxDuration = 90;
+export const maxDuration = 120;
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const MAX_ARTICLES = 120;
@@ -293,10 +292,9 @@ function makeFinalMergePrompt({
 }) {
   const partialText = analyses
     .map((analysis, index) => {
-      return [
-        `Batch ${index + 1}`,
-        JSON.stringify(analysis, null, 2),
-      ].join("\n");
+      return [`Batch ${index + 1}`, JSON.stringify(analysis, null, 2)].join(
+        "\n"
+      );
     })
     .join("\n\n");
 
@@ -393,104 +391,188 @@ async function generateGeminiJson(ai: GoogleGenAI, prompt: string) {
   return parsed;
 }
 
+function sendEvent(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+  payload: Record<string, unknown>
+) {
+  controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+}
+
 export async function GET() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const encoder = new TextEncoder();
 
-  if (!apiKey) {
-    return NextResponse.json(
-      { ok: false, error: "Missing GEMINI_API_KEY" },
-      { status: 500 }
-    );
-  }
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const heartbeat = setInterval(() => {
+        controller.enqueue(encoder.encode(`: heartbeat\n\n`));
+      }, 15000);
 
-  const supabase = createSupabaseServerClient();
+      try {
+        const apiKey = process.env.GEMINI_API_KEY;
 
-  const { data: articles, error } = await supabase
-    .from("articles")
-    .select("id,title,source,published_at,summary,score,region,category")
-    .order("published_at", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false })
-    .limit(MAX_ARTICLES);
+        if (!apiKey) {
+          sendEvent(controller, encoder, {
+            type: "error",
+            message: "Missing GEMINI_API_KEY",
+          });
+          controller.close();
+          return;
+        }
 
-  if (error) {
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 }
-    );
-  }
+        sendEvent(controller, encoder, {
+          type: "progress",
+          message: "正在讀取文章池...",
+          stage: "reading_articles",
+        });
 
-  const typedArticles = (articles ?? []) as Article[];
+        const supabase = createSupabaseServerClient();
 
-  if (typedArticles.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      method: "Gemini batch article pool diagnostics",
-      articles: 0,
-      batches: 0,
-      batch_size: BATCH_SIZE,
-      analysis: {
-        dominant_event_families: [],
-        singleton_candidates: [],
-        overcluster_risks: [],
-        coverage_summary: {
-          main_observation: "目前文章池沒有可分析的文章。",
-          why_clusters_may_be_unbalanced: "文章池為空，因此無法判斷 clusters 是否失衡。",
-          recommended_next_step: "請先執行 Refresh Articles。",
-        },
-      },
-    });
-  }
+        const { data: articles, error } = await supabase
+          .from("articles")
+          .select("id,title,source,published_at,summary,score,region,category")
+          .order("published_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(MAX_ARTICLES);
 
-  try {
-    const ai = new GoogleGenAI({ apiKey });
-    const articleBatches = chunkArray(typedArticles, BATCH_SIZE);
-    const partialAnalyses: GeminiAnalysis[] = [];
+        if (error) {
+          sendEvent(controller, encoder, {
+            type: "error",
+            message: error.message,
+          });
+          controller.close();
+          return;
+        }
 
-    for (let index = 0; index < articleBatches.length; index += 1) {
-      const batch = articleBatches[index];
-      const startIndex = index * BATCH_SIZE;
+        const typedArticles = (articles ?? []) as Article[];
 
-      const prompt = makeBatchPrompt({
-        articles: batch,
-        batchIndex: index,
-        totalBatches: articleBatches.length,
-        startIndex,
-      });
+        if (typedArticles.length === 0) {
+          sendEvent(controller, encoder, {
+            type: "complete",
+            result: {
+              ok: true,
+              method: "Gemini batch article pool diagnostics stream",
+              articles: 0,
+              batches: 0,
+              batch_size: BATCH_SIZE,
+              model: GEMINI_MODEL,
+              analysis: {
+                dominant_event_families: [],
+                singleton_candidates: [],
+                overcluster_risks: [],
+                coverage_summary: {
+                  main_observation: "目前文章池沒有可分析的文章。",
+                  why_clusters_may_be_unbalanced:
+                    "文章池為空，因此無法判斷 clusters 是否失衡。",
+                  recommended_next_step: "請先執行 Refresh Articles。",
+                },
+              },
+            },
+          });
+          controller.close();
+          return;
+        }
 
-      const parsed = await generateGeminiJson(ai, prompt);
-      const sanitized = sanitizeGeminiAnalysis(parsed, typedArticles);
+        const ai = new GoogleGenAI({ apiKey });
+        const articleBatches = chunkArray(typedArticles, BATCH_SIZE);
+        const partialAnalyses: GeminiAnalysis[] = [];
 
-      partialAnalyses.push(sanitized);
-    }
+        sendEvent(controller, encoder, {
+          type: "progress",
+          message: `共讀取 ${typedArticles.length} 篇文章，分成 ${articleBatches.length} 批分析。`,
+          stage: "articles_loaded",
+          total_articles: typedArticles.length,
+          total_batches: articleBatches.length,
+        });
 
-    const finalPrompt = makeFinalMergePrompt({
-      analyses: partialAnalyses,
-      totalArticles: typedArticles.length,
-      totalBatches: articleBatches.length,
-    });
+        for (let index = 0; index < articleBatches.length; index += 1) {
+          const batch = articleBatches[index];
+          const startIndex = index * BATCH_SIZE;
 
-    const finalParsed = await generateGeminiJson(ai, finalPrompt);
-    const finalAnalysis = sanitizeGeminiAnalysis(finalParsed, typedArticles);
+          sendEvent(controller, encoder, {
+            type: "progress",
+            message: `正在分析第 ${index + 1} 批 / 共 ${
+              articleBatches.length
+            } 批...`,
+            stage: "batch_running",
+            current_batch: index + 1,
+            total_batches: articleBatches.length,
+          });
 
-    return NextResponse.json({
-      ok: true,
-      method: "Gemini batch article pool diagnostics",
-      articles: typedArticles.length,
-      batches: articleBatches.length,
-      batch_size: BATCH_SIZE,
-      model: GEMINI_MODEL,
-      analysis: finalAnalysis,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to analyze article pool",
-      },
-      { status: 500 }
-    );
-  }
+          const prompt = makeBatchPrompt({
+            articles: batch,
+            batchIndex: index,
+            totalBatches: articleBatches.length,
+            startIndex,
+          });
+
+          const parsed = await generateGeminiJson(ai, prompt);
+          const sanitized = sanitizeGeminiAnalysis(parsed, typedArticles);
+
+          partialAnalyses.push(sanitized);
+
+          sendEvent(controller, encoder, {
+            type: "progress",
+            message: `第 ${index + 1} 批完成。`,
+            stage: "batch_complete",
+            current_batch: index + 1,
+            total_batches: articleBatches.length,
+          });
+        }
+
+        sendEvent(controller, encoder, {
+          type: "progress",
+          message: "正在統合所有批次的 Gemini 分析結果...",
+          stage: "final_merge",
+          total_batches: articleBatches.length,
+        });
+
+        const finalPrompt = makeFinalMergePrompt({
+          analyses: partialAnalyses,
+          totalArticles: typedArticles.length,
+          totalBatches: articleBatches.length,
+        });
+
+        const finalParsed = await generateGeminiJson(ai, finalPrompt);
+        const finalAnalysis = sanitizeGeminiAnalysis(
+          finalParsed,
+          typedArticles
+        );
+
+        sendEvent(controller, encoder, {
+          type: "complete",
+          result: {
+            ok: true,
+            method: "Gemini batch article pool diagnostics stream",
+            articles: typedArticles.length,
+            batches: articleBatches.length,
+            batch_size: BATCH_SIZE,
+            model: GEMINI_MODEL,
+            analysis: finalAnalysis,
+          },
+        });
+
+        controller.close();
+      } catch (error) {
+        sendEvent(controller, encoder, {
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to analyze article pool",
+        });
+        controller.close();
+      } finally {
+        clearInterval(heartbeat);
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    },
+  });
 }
