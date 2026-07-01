@@ -3,8 +3,8 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const maxDuration = 180;
 
-const GEMINI_BATCH_MODEL = "gemini-2.5-flash";
-const GEMINI_MERGE_MODEL = "gemini-2.5-flash";
+const GEMINI_BATCH_MODEL = "gemini-2.5-flash-lite";
+const GEMINI_MERGE_MODEL = "gemini-2.5-flash-lite";
 const MAX_ARTICLES = 120;
 const BATCH_SIZE = 60;
 const MAX_SUMMARY_CHARS = 120;
@@ -393,6 +393,28 @@ ${partialText}
 `.trim();
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getGeminiErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+
+  return String(error);
+}
+
+function isRetryableGeminiError(error: unknown) {
+  const message = getGeminiErrorMessage(error);
+
+  return (
+    message.includes("503") ||
+    message.includes("UNAVAILABLE") ||
+    message.includes("high demand") ||
+    message.includes("429") ||
+    message.includes("RESOURCE_EXHAUSTED")
+  );
+}
+
 async function generateGeminiJson({
   ai,
   prompt,
@@ -402,6 +424,61 @@ async function generateGeminiJson({
   prompt: string;
   model: string;
 }) {
+  const fallbackModels = Array.from(
+    new Set([model, "gemini-2.5-flash", "gemini-2.0-flash-lite"])
+  );
+
+  let lastError: unknown = null;
+
+  for (const currentModel of fallbackModels) {
+    const maxAttempts = 2;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const responsePromise = ai.models.generateContent({
+          model: currentModel,
+          contents: prompt,
+          config: {
+            temperature: 0.2,
+            responseMimeType: "application/json",
+          },
+        });
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Gemini timed out on ${currentModel}`));
+          }, GEMINI_TIMEOUT_MS);
+        });
+
+        const response = await Promise.race([responsePromise, timeoutPromise]);
+        const text = response.text ?? "";
+        const parsed = safeParseGeminiJson(text);
+
+        if (!parsed) {
+          throw new Error(`Gemini returned invalid JSON on ${currentModel}`);
+        }
+
+        return parsed;
+      } catch (error) {
+        lastError = error;
+
+        if (!isRetryableGeminiError(error)) {
+          throw error;
+        }
+
+        if (attempt < maxAttempts) {
+          await sleep(1500 * attempt);
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    `Gemini unavailable after fallback models: ${getGeminiErrorMessage(
+      lastError
+    )}`
+  );
+}
   const responsePromise = ai.models.generateContent({
     model,
     contents: prompt,
