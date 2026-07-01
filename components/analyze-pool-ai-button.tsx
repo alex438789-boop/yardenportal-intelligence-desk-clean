@@ -257,7 +257,7 @@ export function AnalyzePoolAiButton() {
             Article Pool Analysis
           </h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            用 Gemini 檢查文章池中主要事件家族，勾選後可依照 article IDs 建立 AI-assisted clusters。
+            用 Gemini 檢查新聞池中主要事件群組，勾選後可依照 article IDs 建立 AI-assisted clusters。
           </p>
         </div>
 
