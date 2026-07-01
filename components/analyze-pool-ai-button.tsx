@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Brain, ChevronDown, Loader2, Network } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { Brain, CheckSquare, ChevronDown, Loader2, Square } from "lucide-react";
 
 type EventFamily = {
   zh_title: string;
@@ -73,6 +73,10 @@ function labelRecommendation(value: string | undefined) {
   return labels[value] ?? value;
 }
 
+function makeFamilyKey(item: EventFamily, index: number) {
+  return `${item.zh_title}-${index}`;
+}
+
 function AnalysisItem({
   title,
   badge,
@@ -108,7 +112,9 @@ function AnalysisItem({
           </span>
         )}
 
-        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${toneClass}`}>
+        <span
+          className={`rounded-full px-2.5 py-1 text-xs font-medium ${toneClass}`}
+        >
           {formatConfidence(confidence)}
         </span>
       </div>
@@ -140,15 +146,38 @@ export function AnalyzePoolAiButton() {
 
   const [open, setOpen] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
-  const [loadingRebuild, setLoadingRebuild] = useState(false);
+  const [loadingApply, setLoadingApply] = useState(false);
   const [result, setResult] = useState<ApiResult | null>(null);
-  const [rebuildMessage, setRebuildMessage] = useState("");
+  const [selectedFamilyKeys, setSelectedFamilyKeys] = useState<string[]>([]);
+  const [applyMessage, setApplyMessage] = useState("");
+
+  const analysis = result?.analysis;
+  const dominantFamilies = analysis?.dominant_event_families ?? [];
+
+  const selectedFamilies = useMemo(() => {
+    return dominantFamilies.filter((item, index) =>
+      selectedFamilyKeys.includes(makeFamilyKey(item, index))
+    );
+  }, [dominantFamilies, selectedFamilyKeys]);
+
+  function toggleFamily(item: EventFamily, index: number) {
+    const key = makeFamilyKey(item, index);
+
+    setSelectedFamilyKeys((current) => {
+      if (current.includes(key)) {
+        return current.filter((value) => value !== key);
+      }
+
+      return [...current, key];
+    });
+  }
 
   async function analyzePool() {
     setOpen(true);
     setLoadingAnalysis(true);
     setResult(null);
-    setRebuildMessage("");
+    setSelectedFamilyKeys([]);
+    setApplyMessage("");
 
     try {
       const response = await fetch("/api/clusters/analyze-pool", {
@@ -172,38 +201,47 @@ export function AnalyzePoolAiButton() {
     }
   }
 
-  async function rebuildClusters() {
-    setLoadingRebuild(true);
-    setRebuildMessage("正在重新建立 clusters...");
+  async function applySelectedFamilies() {
+    if (selectedFamilies.length === 0) {
+      setApplyMessage("請先勾選至少一個 dominant event family。");
+      return;
+    }
+
+    setLoadingApply(true);
+    setApplyMessage("正在依照 AI 建議建立 clusters...");
 
     try {
-      const response = await fetch("/api/clusters/rebuild", {
-        method: "GET",
+      const response = await fetch("/api/clusters/apply-ai-suggestions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         cache: "no-store",
+        body: JSON.stringify({
+          families: selectedFamilies,
+        }),
       });
 
       const data = await response.json();
 
       if (!response.ok || !data.ok) {
-        setRebuildMessage(data.error ?? "重建 clusters 失敗");
+        setApplyMessage(data.error ?? "套用 AI 建議失敗");
         return;
       }
 
-      setRebuildMessage(
-        `完成：讀取 ${data.articles} 篇 articles，重建 ${data.clusters} 個 clusters`
+      setApplyMessage(
+        `完成：建立 ${data.created_clusters} 個 AI-assisted clusters，影響舊 clusters ${data.affected_old_clusters} 個。`
       );
 
       router.refresh();
     } catch (error) {
-      setRebuildMessage(
-        error instanceof Error ? error.message : "重建 clusters 失敗"
+      setApplyMessage(
+        error instanceof Error ? error.message : "套用 AI 建議失敗"
       );
     } finally {
-      setLoadingRebuild(false);
+      setLoadingApply(false);
     }
   }
-
-  const analysis = result?.analysis;
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -219,7 +257,7 @@ export function AnalyzePoolAiButton() {
             Article Pool Analysis
           </h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            用 Gemini 檢查文章池中主要事件家族、singleton candidates 與 overcluster 風險。
+            用 Gemini 檢查文章池中主要事件家族，勾選後可依照 article IDs 建立 AI-assisted clusters。
           </p>
         </div>
 
@@ -235,7 +273,7 @@ export function AnalyzePoolAiButton() {
           <div className="flex flex-wrap gap-3">
             <button
               onClick={analyzePool}
-              disabled={loadingAnalysis || loadingRebuild}
+              disabled={loadingAnalysis || loadingApply}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
             >
               {loadingAnalysis ? (
@@ -246,22 +284,26 @@ export function AnalyzePoolAiButton() {
               {loadingAnalysis ? "Analyzing..." : "Analyze Pool with AI"}
             </button>
 
-            <button
-              onClick={rebuildClusters}
-              disabled={loadingAnalysis || loadingRebuild}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
-            >
-              {loadingRebuild ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Network className="h-4 w-4" />
-              )}
-              {loadingRebuild ? "Rebuilding..." : "重新 Clusters"}
-            </button>
+            {dominantFamilies.length > 0 && (
+              <button
+                onClick={applySelectedFamilies}
+                disabled={loadingAnalysis || loadingApply}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+              >
+                {loadingApply ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckSquare className="h-4 w-4" />
+                )}
+                {loadingApply
+                  ? "Applying..."
+                  : `Apply Selected (${selectedFamilies.length})`}
+              </button>
+            )}
           </div>
 
-          {rebuildMessage && (
-            <p className="mt-3 text-sm text-slate-500">{rebuildMessage}</p>
+          {applyMessage && (
+            <p className="mt-3 text-sm text-slate-500">{applyMessage}</p>
           )}
 
           {result && !result.ok && (
@@ -294,27 +336,88 @@ export function AnalyzePoolAiButton() {
                   Dominant Event Families
                 </h3>
 
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  勾選後按 Apply Selected，系統會依照 Gemini 提供的 article_ids 建立新的 cluster。
+                </p>
+
                 <div className="mt-3 space-y-3">
-                  {(analysis.dominant_event_families ?? []).length === 0 && (
+                  {dominantFamilies.length === 0 && (
                     <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
                       Gemini 沒有找到明顯的主要事件家族。
                     </p>
                   )}
 
-                  {(analysis.dominant_event_families ?? []).map(
-                    (item, index) => (
-                      <AnalysisItem
-                        key={`${item.zh_title}-${index}`}
-                        title={item.zh_title}
-                        badge={item.event_scope}
-                        confidence={item.confidence}
-                        body={item.why_it_matters}
-                        action={item.recommendation}
-                        articleIds={item.article_ids}
-                        tone="violet"
-                      />
-                    )
-                  )}
+                  {dominantFamilies.map((item, index) => {
+                    const key = makeFamilyKey(item, index);
+                    const selected = selectedFamilyKeys.includes(key);
+                    const enoughArticles = (item.article_ids ?? []).length >= 2;
+
+                    return (
+                      <div
+                        key={key}
+                        className={`rounded-xl border p-4 transition ${
+                          selected
+                            ? "border-violet-300 bg-violet-50/40"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => toggleFamily(item, index)}
+                            disabled={!enoughArticles}
+                            className="mt-1 text-violet-600 disabled:text-slate-300"
+                            aria-label="Select dominant event family"
+                          >
+                            {selected ? (
+                              <CheckSquare className="h-5 w-5" />
+                            ) : (
+                              <Square className="h-5 w-5" />
+                            )}
+                          </button>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="font-semibold text-slate-950">
+                                {item.zh_title}
+                              </h4>
+
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+                                {item.event_scope}
+                              </span>
+
+                              <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
+                                {formatConfidence(item.confidence)}
+                              </span>
+
+                              {!enoughArticles && (
+                                <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">
+                                  article_ids 少於 2，不能建立 cluster
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="mt-2 text-sm leading-6 text-slate-600">
+                              {item.why_it_matters}
+                            </p>
+
+                            <p className="mt-2 text-xs text-slate-500">
+                              {item.region} · {item.category} ·{" "}
+                              {labelRecommendation(item.recommendation)}
+                            </p>
+
+                            <details className="mt-3">
+                              <summary className="cursor-pointer text-xs font-medium text-slate-400">
+                                Article IDs ({item.article_ids?.length ?? 0})
+                              </summary>
+                              <p className="mt-2 break-words text-xs leading-5 text-slate-400">
+                                {(item.article_ids ?? []).join(", ")}
+                              </p>
+                            </details>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

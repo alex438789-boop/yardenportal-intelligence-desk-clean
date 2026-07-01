@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 import { RebuildClustersButton } from "@/components/rebuild-clusters-button";
 import { GenerateClusterAiButton } from "@/components/generate-cluster-ai-button";
 import { AnalyzePoolAiButton } from "@/components/analyze-pool-ai-button";
+import { DeleteClusterButton } from "@/components/delete-cluster-button";
 
 export const dynamic = "force-dynamic";
 
@@ -399,8 +400,9 @@ function ClusterCard({
         {cluster.title}
       </h2>
 
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2">
         <GenerateClusterAiButton clusterId={cluster.id} />
+        <DeleteClusterButton clusterId={cluster.id} />
       </div>
 
       <p className="mt-2 text-xs text-slate-500">
