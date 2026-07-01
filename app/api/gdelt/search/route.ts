@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 const GDELT_DOC_API = "https://api.gdeltproject.org/api/v2/doc/doc";
+const GDELT_REQUEST_DELAY_MS = 7000;
+const GDELT_MAX_RETRIES = 1;
 
 type GdeltArticle = {
   url?: string;
@@ -26,11 +28,15 @@ type GdeltTimelineResponse = {
   timeline?: GdeltTimelinePoint[];
 };
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function makeGdeltUrl({
   query,
   mode,
   timespan,
-  maxrecords = 20,
+  maxrecords = 10,
 }: {
   query: string;
   mode: "artlist" | "timelinevolraw";
@@ -49,20 +55,65 @@ function makeGdeltUrl({
   return url.toString();
 }
 
-async function fetchGdeltJson(url: string) {
-  const response = await fetch(url, {
-    method: "GET",
-    cache: "no-store",
-    headers: {
-      "User-Agent": "YardenPORTAL/1.0",
-    },
-  });
+function getRetryAfterMs(response: Response) {
+  const retryAfter = response.headers.get("retry-after");
 
-  if (!response.ok) {
-    throw new Error(`GDELT request failed: ${response.status}`);
+  if (!retryAfter) return null;
+
+  const seconds = Number(retryAfter);
+
+  if (!Number.isNaN(seconds)) {
+    return seconds * 1000;
   }
 
-  return response.json();
+  const retryDate = new Date(retryAfter).getTime();
+  const now = Date.now();
+
+  if (!Number.isNaN(retryDate) && retryDate > now) {
+    return retryDate - now;
+  }
+
+  return null;
+}
+
+async function fetchGdeltJson(url: string) {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= GDELT_MAX_RETRIES; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          "User-Agent": "YardenPORTAL/1.0",
+        },
+      });
+
+      if (response.status === 429) {
+        const retryAfterMs = getRetryAfterMs(response);
+        const waitMs = retryAfterMs ?? 12000 * (attempt + 1);
+
+        await sleep(waitMs);
+        lastError = new Error("GDELT request failed: 429");
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`GDELT request failed: ${response.status}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      lastError =
+        error instanceof Error
+          ? error
+          : new Error("Unknown GDELT request error");
+
+      await sleep(5000 * (attempt + 1));
+    }
+  }
+
+  throw lastError ?? new Error("GDELT request failed after retries");
 }
 
 function extractTimelineTotal(data: GdeltTimelineResponse) {
@@ -113,54 +164,38 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [timeline24h, timeline72h, timeline7d, artList] = await Promise.all([
-      fetchGdeltJson(
-        makeGdeltUrl({
-          query,
-          mode: "timelinevolraw",
-          timespan: "1d",
-        })
-      ) as Promise<GdeltTimelineResponse>,
-      fetchGdeltJson(
-        makeGdeltUrl({
-          query,
-          mode: "timelinevolraw",
-          timespan: "3d",
-        })
-      ) as Promise<GdeltTimelineResponse>,
-      fetchGdeltJson(
-        makeGdeltUrl({
-          query,
-          mode: "timelinevolraw",
-          timespan: "7d",
-        })
-      ) as Promise<GdeltTimelineResponse>,
-      fetchGdeltJson(
-        makeGdeltUrl({
-          query,
-          mode: "artlist",
-          timespan: "3d",
-          maxrecords: 20,
-        })
-      ) as Promise<GdeltArtListResponse>,
-    ]);
+    const timeline72h = (await fetchGdeltJson(
+      makeGdeltUrl({
+        query,
+        mode: "timelinevolraw",
+        timespan: "3d",
+      })
+    )) as GdeltTimelineResponse;
 
-    const volume24h = extractTimelineTotal(timeline24h);
+    await sleep(GDELT_REQUEST_DELAY_MS);
+
+    const artList = (await fetchGdeltJson(
+      makeGdeltUrl({
+        query,
+        mode: "artlist",
+        timespan: "3d",
+        maxrecords: 10,
+      })
+    )) as GdeltArtListResponse;
+
     const volume72h = extractTimelineTotal(timeline72h);
-    const volume7d = extractTimelineTotal(timeline7d);
-
-    const baselineVolume = Math.max(Math.round(volume7d / 7), 1);
-    const spikeRatio = Number((volume24h / baselineVolume).toFixed(2));
 
     const articles = (artList.articles ?? [])
       .map(normalizeArticle)
       .filter((article) => article.url)
-      .slice(0, 20);
+      .slice(0, 10);
 
     const sourceCount = unique(articles.map((article) => article.domain)).length;
+
     const sourceCountries = unique(
       articles.map((article) => article.sourcecountry)
     ).slice(0, 12);
+
     const languages = unique(articles.map((article) => article.language)).slice(
       0,
       12
@@ -168,20 +203,15 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      method: "GDELT DOC API search with timeline volume and article samples",
+      method: "Lightweight GDELT DOC API search using 3d timeline and article samples",
       query,
-      volume_24h: volume24h,
       volume_72h: volume72h,
-      volume_7d: volume7d,
-      baseline_volume: baselineVolume,
-      spike_ratio: spikeRatio,
       source_count: sourceCount,
       source_countries: sourceCountries,
       languages,
       articles,
       raw_preview: {
-        timeline_24h_points: timeline24h.timeline?.slice(0, 5) ?? [],
-        timeline_72h_points: timeline72h.timeline?.slice(0, 5) ?? [],
+        timeline_72h_points: timeline72h.timeline?.slice(0, 8) ?? [],
       },
     });
   } catch (error) {
