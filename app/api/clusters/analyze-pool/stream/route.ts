@@ -3,7 +3,8 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 
 export const maxDuration = 120;
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_BATCH_MODEL = "gemini-2.5-flash";
+const GEMINI_MERGE_MODEL = "gemini-2.5-flash-lite";
 const MAX_ARTICLES = 120;
 const BATCH_SIZE = 60;
 const MAX_SUMMARY_CHARS = 120;
@@ -394,9 +395,17 @@ ${partialText}
 `.trim();
 }
 
-async function generateGeminiJson(ai: GoogleGenAI, prompt: string) {
+async function generateGeminiJson({
+  ai,
+  prompt,
+  model,
+}: {
+  ai: GoogleGenAI;
+  prompt: string;
+  model: string;
+}) {
   const responsePromise = ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model,
     contents: prompt,
     config: {
       temperature: 0.2,
@@ -536,7 +545,12 @@ export async function GET() {
             startIndex,
           });
 
-          const parsed = await generateGeminiJson(ai, prompt);
+          const parsed = await generateGeminiJson({
+            ai,
+            prompt,
+            model: GEMINI_BATCH_MODEL,
+
+          });
           const sanitized = sanitizeGeminiAnalysis(parsed, typedArticles);
 
           partialAnalyses.push(sanitized);
@@ -563,11 +577,14 @@ export async function GET() {
           totalBatches: articleBatches.length,
         });
 
-        const finalParsed = await generateGeminiJson(ai, finalPrompt);
-        const finalAnalysis = sanitizeGeminiAnalysis(
-          finalParsed,
-          typedArticles
-        );
+        const finalParsed = await generateGeminiJson({
+          ai,
+          prompt: finalPrompt,
+          model: GEMINI_BATCH_MODEL,
+          merge_model: GEMINI_MERGE_MODEL,
+        });
+
+        const finalAnalysis = sanitizeGeminiAnalysis(finalParsed, typedArticles);
 
         sendEvent(controller, encoder, {
           type: "complete",
