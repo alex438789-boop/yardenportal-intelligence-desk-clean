@@ -5,8 +5,8 @@ export const maxDuration = 180;
 
 const GEMINI_BATCH_MODEL = "gemini-2.5-flash-lite";
 const GEMINI_MERGE_MODEL = "gemini-2.5-flash-lite";
-const MAX_ARTICLES = 90;
-const BATCH_SIZE = 90;
+const MAX_ARTICLES = 120;
+const BATCH_SIZE = 75;
 const GEMINI_TIMEOUT_MS = 70000;
 
 type Article = {
@@ -748,45 +748,58 @@ export async function GET() {
           });
         }
 
-        sendEvent(controller, encoder, {
-          type: "progress",
-          message: "正在用 Gemini Lite 統合所有批次結果...",
-          stage: "gemini_final_merge",
-          total_batches: articleBatches.length,
-        });
-
         let finalAnalysis: GeminiAnalysis;
-        let mergeMethod = "gemini_final_merge";
+let mergeMethod = "single_batch_no_merge";
 
-        try {
-          const finalPrompt = makeFinalMergePrompt({
-            analyses: partialAnalyses,
-            totalArticles: typedArticles.length,
-            totalBatches: articleBatches.length,
-          });
+if (partialAnalyses.length === 1) {
+  sendEvent(controller, encoder, {
+    type: "progress",
+    message: "只有一批分析結果，略過 Gemini final merge 以加快速度...",
+    stage: "single_batch_no_merge",
+    total_batches: articleBatches.length,
+  });
 
-          const finalParsed = await generateGeminiJson({
-            ai,
-            prompt: finalPrompt,
-            model: GEMINI_MERGE_MODEL,
-          });
+  finalAnalysis = sanitizeGeminiAnalysis(partialAnalyses[0], typedArticles);
+} else {
+  sendEvent(controller, encoder, {
+    type: "progress",
+    message: "正在用 Gemini Lite 統合所有批次結果...",
+    stage: "gemini_final_merge",
+    total_batches: articleBatches.length,
+  });
 
-          finalAnalysis = sanitizeGeminiAnalysis(finalParsed, typedArticles);
-        } catch {
-          sendEvent(controller, encoder, {
-            type: "progress",
-            message: "Gemini final merge 失敗，改用程式快速合併批次結果...",
-            stage: "programmatic_merge_fallback",
-            total_batches: articleBatches.length,
-          });
+  mergeMethod = "gemini_final_merge";
 
-          finalAnalysis = sanitizeGeminiAnalysis(
-            mergePartialAnalysesFallback(partialAnalyses),
-            typedArticles
-          );
+  try {
+    const finalPrompt = makeFinalMergePrompt({
+      analyses: partialAnalyses,
+      totalArticles: typedArticles.length,
+      totalBatches: articleBatches.length,
+    });
 
-          mergeMethod = "programmatic_partial_merge_fallback";
-        }
+    const finalParsed = await generateGeminiJson({
+      ai,
+      prompt: finalPrompt,
+      model: GEMINI_MERGE_MODEL,
+    });
+
+    finalAnalysis = sanitizeGeminiAnalysis(finalParsed, typedArticles);
+  } catch {
+    sendEvent(controller, encoder, {
+      type: "progress",
+      message: "Gemini final merge 失敗，改用程式快速合併批次結果...",
+      stage: "programmatic_merge_fallback",
+      total_batches: articleBatches.length,
+    });
+
+    finalAnalysis = sanitizeGeminiAnalysis(
+      mergePartialAnalysesFallback(partialAnalyses),
+      typedArticles
+    );
+
+    mergeMethod = "programmatic_partial_merge_fallback";
+  }
+}
 
         sendEvent(controller, encoder, {
           type: "complete",
