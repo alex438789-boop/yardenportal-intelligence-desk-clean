@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase";
 const GEMINI_MODEL = "gemini-2.5-flash";
 const MAX_ARTICLES = 120;
 const MAX_SUMMARY_CHARS = 220;
-const GEMINI_TIMEOUT_MS = 45000;
+const GEMINI_TIMEOUT_MS = 75000;
 
 type Article = {
   id: string;
