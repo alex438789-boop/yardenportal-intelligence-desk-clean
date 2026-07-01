@@ -625,9 +625,7 @@ export default async function ClustersPage() {
         </div>
       </div>
 
-      <div className="mb-8">
-        <AnalyzePoolAiButton />
-      </div>
+     
 
     </div>
 
@@ -673,6 +671,10 @@ export default async function ClustersPage() {
           <p className="mt-2 text-xs text-slate-400">點擊跳到追蹤區塊</p>
         </a>
       </section>
+
+      <div className="mb-8">
+        <AnalyzePoolAiButton />
+      </div>
 
       <Section
         title="🔥 Top Priority 高優先事件"
